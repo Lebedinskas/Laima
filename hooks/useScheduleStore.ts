@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Doctor, MonthConfig, ScheduleEntry, ValidationError, ChatMessage, DoctorStats, ChangeRecord, MonthlySnapshot, ScheduleRule } from '@/lib/types';
-import { generateSchedule } from '@/lib/scheduler';
+import { generateSchedule, generateScheduleAsync } from '@/lib/scheduler';
 import { validateSchedule, calculateStats } from '@/lib/validator';
 import { swapDoctor } from '@/lib/operations';
 import { defaultDoctors } from '@/data/default-doctors';
@@ -159,96 +159,109 @@ export const useScheduleStore = create<ScheduleStore>()(
 
       generate: () => {
         const { doctors, config, changeHistory, scheduleCache, rules } = get();
-        const schedule = generateSchedule(doctors, config, rules);
-        const errors = validateSchedule(schedule, doctors, config, rules);
-        const stats = calculateStats(schedule, doctors, config);
 
-        const snapshot: MonthlySnapshot = {
-          year: config.year,
-          month: config.month,
-          doctorStats: stats,
-          generatedAt: Date.now(),
-          totalChanges: 0,
-        };
+        // Use async ILP solver, update state when done
+        generateScheduleAsync(doctors, config, rules).then(schedule => {
+          const currentState = get();
+          // Check config hasn't changed while solving
+          if (currentState.config.year !== config.year || currentState.config.month !== config.month) return;
 
-        const genRecords = createGenRecords(schedule, doctors, config);
+          const errors = validateSchedule(schedule, doctors, config, rules);
+          const stats = calculateStats(schedule, doctors, config);
 
-        const otherHistory = changeHistory.filter(
-          r => !(r.year === config.year && r.month === config.month)
-        );
-        const otherSnapshots = get().monthlySnapshots.filter(
-          s => !(s.year === config.year && s.month === config.month)
-        );
+          const snapshot: MonthlySnapshot = {
+            year: config.year,
+            month: config.month,
+            doctorStats: stats,
+            generatedAt: Date.now(),
+            totalChanges: 0,
+          };
 
-        // Save to cache
-        const key = monthKey(config.year, config.month);
-        const newCache = { ...scheduleCache, [key]: schedule };
+          const genRecords = createGenRecords(schedule, doctors, config);
 
-        set({
-          schedule,
-          errors,
-          stats,
-          undoStack: [],
-          changeHistory: [...otherHistory, ...genRecords],
-          monthlySnapshots: [...otherSnapshots, snapshot],
-          scheduleCache: newCache,
+          const otherHistory = changeHistory.filter(
+            r => !(r.year === config.year && r.month === config.month)
+          );
+          const otherSnapshots = currentState.monthlySnapshots.filter(
+            s => !(s.year === config.year && s.month === config.month)
+          );
+
+          const key = monthKey(config.year, config.month);
+          const newCache = { ...currentState.scheduleCache, [key]: schedule };
+
+          set({
+            schedule,
+            errors,
+            stats,
+            undoStack: [],
+            changeHistory: [...otherHistory, ...genRecords],
+            monthlySnapshots: [...otherSnapshots, snapshot],
+            scheduleCache: newCache,
+          });
         });
       },
 
       generateYear: () => {
         const { doctors, config, changeHistory: existingHistory, rules } = get();
-        const newCache: Record<string, ScheduleEntry[]> = {};
-        const allSnapshots: MonthlySnapshot[] = [];
-        let allGenRecords: ChangeRecord[] = [];
 
+        // Generate all 12 months with ILP solver (async)
+        const months: { year: number; month: number; config: MonthConfig }[] = [];
         let y = config.year;
         let m = config.month;
-
-        // Generate 12 months starting from current
         for (let i = 0; i < 12; i++) {
           const monthConfig = getConfigForMonth(config, y, m);
-          const schedule = generateSchedule(doctors, monthConfig, rules);
-          const stats = calculateStats(schedule, doctors, monthConfig);
-
-          newCache[monthKey(y, m)] = schedule;
-          allSnapshots.push({
-            year: y,
-            month: m,
-            doctorStats: stats,
-            generatedAt: Date.now(),
-            totalChanges: 0,
-          });
-          allGenRecords = [...allGenRecords, ...createGenRecords(schedule, doctors, monthConfig)];
-
+          months.push({ year: y, month: m, config: monthConfig });
           const next = nextMonth(y, m);
           y = next.year;
           m = next.month;
         }
 
-        // Current month's schedule
-        const currentKey = monthKey(config.year, config.month);
-        const currentSchedule = newCache[currentKey] || [];
-        const currentConfig = getConfigForMonth(config, config.year, config.month);
-        const errors = validateSchedule(currentSchedule, doctors, currentConfig, rules);
-        const stats = calculateStats(currentSchedule, doctors, currentConfig);
+        // Run all 12 months in sequence (ILP async)
+        (async () => {
+          const newCache: Record<string, ScheduleEntry[]> = {};
+          const allSnapshots: MonthlySnapshot[] = [];
+          let allGenRecords: ChangeRecord[] = [];
 
-        // Remove old history for generated months, keep unrelated
-        const generatedMonths = new Set(Object.keys(newCache));
-        const keptHistory = existingHistory.filter(
-          r => !generatedMonths.has(monthKey(r.year, r.month))
-        );
+          for (const mo of months) {
+            const schedule = await generateScheduleAsync(doctors, mo.config, rules);
+            const stats = calculateStats(schedule, doctors, mo.config);
 
-        set({
-          schedule: currentSchedule,
-          config: currentConfig,
-          errors,
-          stats,
-          undoStack: [],
-          scheduleCache: newCache,
-          changeHistory: [...keptHistory, ...allGenRecords],
-          monthlySnapshots: allSnapshots,
-          yearGenerated: true,
-        });
+            newCache[monthKey(mo.year, mo.month)] = schedule;
+            allSnapshots.push({
+              year: mo.year,
+              month: mo.month,
+              doctorStats: stats,
+              generatedAt: Date.now(),
+              totalChanges: 0,
+            });
+            allGenRecords = [...allGenRecords, ...createGenRecords(schedule, doctors, mo.config)];
+          }
+
+          // Current month's schedule
+          const currentKey = monthKey(config.year, config.month);
+          const currentSchedule = newCache[currentKey] || [];
+          const currentConfig = getConfigForMonth(config, config.year, config.month);
+          const errors = validateSchedule(currentSchedule, doctors, currentConfig, rules);
+          const stats = calculateStats(currentSchedule, doctors, currentConfig);
+
+          // Remove old history for generated months, keep unrelated
+          const generatedMonths = new Set(Object.keys(newCache));
+          const keptHistory = existingHistory.filter(
+            r => !generatedMonths.has(monthKey(r.year, r.month))
+          );
+
+          set({
+            schedule: currentSchedule,
+            config: currentConfig,
+            errors,
+            stats,
+            undoStack: [],
+            scheduleCache: newCache,
+            changeHistory: [...keptHistory, ...allGenRecords],
+            monthlySnapshots: allSnapshots,
+            yearGenerated: true,
+          });
+        })();
       },
 
       switchMonth: (year, month) => {
