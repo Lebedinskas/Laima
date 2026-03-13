@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const client = new Anthropic();
 
-// Server-side Supabase client (service role not needed — we use anon + user context)
+// Server-side Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

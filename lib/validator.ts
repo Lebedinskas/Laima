@@ -107,7 +107,20 @@ export function validateSchedule(
     }
   }
 
+  const daysInMonth = new Date(config.year, config.month, 0).getDate();
+
   for (const entry of schedule) {
+    // same doctor in both slots
+    if (entry.republicDoctor && entry.departmentDoctor && entry.republicDoctor === entry.departmentDoctor) {
+      const doctor = doctorMap.get(entry.republicDoctor);
+      errors.push({
+        type: 'error',
+        message: `${doctor?.name || entry.republicDoctor}: ${entry.day} d. priskirtas ir respublikos, ir skyriaus stulpelyje`,
+        day: entry.day,
+        doctorId: entry.republicDoctor,
+      });
+    }
+
     // require_both_slots
     if (isEnabled(activeRules, 'require_both_slots')) {
       const sev = getSeverity(activeRules, 'require_both_slots');
@@ -182,7 +195,7 @@ export function validateSchedule(
       }
 
       // no_polyclinic_prev_day
-      if (isEnabled(activeRules, 'no_polyclinic_prev_day') && entry.day < schedule.length) {
+      if (isEnabled(activeRules, 'no_polyclinic_prev_day') && entry.day < daysInMonth) {
         const nextDate = new Date(config.year, config.month - 1, entry.day + 1);
         const nextWeekday = jsToWeekday(nextDate.getDay());
         if (doctor.polyclinicSchedule.some(s => s.weekday === nextWeekday)) {
@@ -259,10 +272,10 @@ export function validateSchedule(
 
     // max_weekend_shifts (custom rule type)
     const weekendRule = activeRules.find(r => r.type === 'max_weekend_shifts' && r.enabled);
-    if (weekendRule && docStats.weekendCount > ((weekendRule.params.max as number) || 999)) {
+    if (weekendRule && docStats.weekendCount > ((weekendRule.params.maxShifts as number) || 999)) {
       errors.push({
         type: weekendRule.severity,
-        message: `${doctor.name}: ${docStats.weekendCount} savaitgaliniai budėjimai viršija limitą (max ${weekendRule.params.max})`,
+        message: `${doctor.name}: ${docStats.weekendCount} savaitgaliniai budėjimai viršija limitą (max ${weekendRule.params.maxShifts})`,
         doctorId: doctor.id,
       });
     }

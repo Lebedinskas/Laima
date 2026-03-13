@@ -17,6 +17,7 @@ interface ScheduleStore {
   stats: DoctorStats[];
   chatMessages: ChatMessage[];
   undoStack: ScheduleEntry[][];
+  redoStack: ScheduleEntry[][];
   changeHistory: ChangeRecord[];
   monthlySnapshots: MonthlySnapshot[];
   scheduleCache: Record<string, ScheduleEntry[]>; // "year-month" -> entries
@@ -34,6 +35,9 @@ interface ScheduleStore {
   switchMonth: (year: number, month: number) => void;
   assignDoctor: (day: number, slot: 'republicDoctor' | 'departmentDoctor' | 'residentDoctor', doctorId: string | null, source?: 'manual' | 'chat') => void;
   undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
   addChatMessage: (message: ChatMessage) => void;
   setSchedule: (schedule: ScheduleEntry[]) => void;
   setRules: (rules: ScheduleRule[]) => void;
@@ -132,6 +136,7 @@ export const useScheduleStore = create<ScheduleStore>()(
       stats: [],
       chatMessages: [],
       undoStack: [],
+      redoStack: [],
       changeHistory: [],
       monthlySnapshots: [],
       scheduleCache: {},
@@ -194,6 +199,7 @@ export const useScheduleStore = create<ScheduleStore>()(
             errors,
             stats,
             undoStack: [],
+            redoStack: [],
             changeHistory: [...otherHistory, ...genRecords],
             monthlySnapshots: [...otherSnapshots, snapshot],
             scheduleCache: newCache,
@@ -256,6 +262,7 @@ export const useScheduleStore = create<ScheduleStore>()(
             errors,
             stats,
             undoStack: [],
+            redoStack: [],
             scheduleCache: newCache,
             changeHistory: [...keptHistory, ...allGenRecords],
             monthlySnapshots: allSnapshots,
@@ -284,6 +291,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           errors,
           stats,
           undoStack: [],
+          redoStack: [],
           scheduleCache: updatedCache,
         });
       },
@@ -378,6 +386,7 @@ export const useScheduleStore = create<ScheduleStore>()(
             errors: result.errors,
             stats: newStats,
             undoStack: [...undoStack, schedule],
+            redoStack: [], // new action clears redo
             changeHistory: newHistory,
             monthlySnapshots: newSnaps,
             scheduleCache: newCache,
@@ -386,7 +395,7 @@ export const useScheduleStore = create<ScheduleStore>()(
       },
 
       undo: () => {
-        const { undoStack, doctors, config, rules } = get();
+        const { undoStack, redoStack, schedule, doctors, config, rules } = get();
         if (undoStack.length === 0) return;
         const previousSchedule = undoStack[undoStack.length - 1];
         const errors = validateSchedule(previousSchedule, doctors, config, rules);
@@ -396,8 +405,27 @@ export const useScheduleStore = create<ScheduleStore>()(
           errors,
           stats,
           undoStack: undoStack.slice(0, -1),
+          redoStack: [...redoStack, schedule],
         });
       },
+
+      redo: () => {
+        const { redoStack, undoStack, schedule, doctors, config, rules } = get();
+        if (redoStack.length === 0) return;
+        const nextSchedule = redoStack[redoStack.length - 1];
+        const errors = validateSchedule(nextSchedule, doctors, config, rules);
+        const stats = calculateStats(nextSchedule, doctors, config);
+        set({
+          schedule: nextSchedule,
+          errors,
+          stats,
+          undoStack: [...undoStack, schedule],
+          redoStack: redoStack.slice(0, -1),
+        });
+      },
+
+      canUndo: () => get().undoStack.length > 0,
+      canRedo: () => get().redoStack.length > 0,
 
       addChatMessage: (message) => {
         set({ chatMessages: [...get().chatMessages, message] });
@@ -413,6 +441,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           errors,
           stats,
           undoStack: currentSchedule.length > 0 ? [...undoStack, currentSchedule] : undoStack,
+          redoStack: [],
         });
       },
 
@@ -447,6 +476,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         scheduleCache: state.scheduleCache,
         yearGenerated: state.yearGenerated,
         rules: state.rules,
+        // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
     }
   )

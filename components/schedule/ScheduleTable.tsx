@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 export function ScheduleTable() {
-  const { schedule, errors, config, undo, undoStack } = useScheduleStore();
+  const { schedule, errors, config, undo, redo, undoStack, redoStack } = useScheduleStore();
 
   if (schedule.length === 0) {
     return (
@@ -54,6 +54,11 @@ export function ScheduleTable() {
           {undoStack.length > 0 && (
             <Button variant="outline" size="sm" onClick={undo}>
               ↩ Atšaukti
+            </Button>
+          )}
+          {redoStack.length > 0 && (
+            <Button variant="outline" size="sm" onClick={redo}>
+              ↪ Grąžinti
             </Button>
           )}
         </div>
