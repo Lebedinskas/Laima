@@ -138,7 +138,7 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full border rounded-lg bg-white">
+    <div className="flex flex-col h-full border rounded-lg bg-white overflow-hidden">
       <div className="px-4 py-3 border-b bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -147,7 +147,7 @@ export function ChatPanel() {
         <p className="text-xs text-muted-foreground mt-0.5">Grafikų pakeitimai, keitimai, patikrinimai</p>
       </div>
 
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 min-h-0 p-4" ref={scrollRef}>
         <div className="space-y-3">
           {chatMessages.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-6">
