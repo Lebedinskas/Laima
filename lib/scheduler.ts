@@ -1,4 +1,4 @@
-import { Doctor, MonthConfig, ScheduleEntry } from './types';
+import { Doctor, MonthConfig, ScheduleEntry, ScheduleRule } from './types';
 import { DEFAULT_SHIFT_DURATION, DEFAULT_MAX_WEEKLY_HOURS } from './constants';
 
 /** Get ISO week number for a date */
@@ -25,6 +25,19 @@ function isUnavailable(doctor: Doctor, dateStr: string): boolean {
   return doctor.unavailableDates.includes(dateStr);
 }
 
+/** Helper: check if a rule is enabled */
+function isRuleEnabled(rules: ScheduleRule[], type: string): boolean {
+  const rule = rules.find(r => r.type === type);
+  return rule ? rule.enabled : true; // default enabled if rule not found
+}
+
+/** Helper: get rule param */
+function getRuleParam(rules: ScheduleRule[], type: string, param: string, defaultVal: number): number {
+  const rule = rules.find(r => r.type === type);
+  if (!rule || !rule.enabled) return defaultVal;
+  return (rule.params[param] as number) ?? defaultVal;
+}
+
 interface DoctorState {
   assignedDays: number[]; // day numbers where this doctor has any shift
   republicCount: number;
@@ -36,11 +49,23 @@ interface DoctorState {
 
 export function generateSchedule(
   doctors: Doctor[],
-  config: MonthConfig
+  config: MonthConfig,
+  rules?: ScheduleRule[]
 ): ScheduleEntry[] {
   const { year, month, holidays } = config;
-  const maxWeeklyHours = config.maxWeeklyHours || DEFAULT_MAX_WEEKLY_HOURS;
+  const activeRules = rules || [];
   const shiftDuration = config.shiftDurationHours || DEFAULT_SHIFT_DURATION;
+  const maxWeeklyHours = getRuleParam(activeRules, 'max_weekly_hours', 'hours', config.maxWeeklyHours || DEFAULT_MAX_WEEKLY_HOURS);
+  const minRestDays = getRuleParam(activeRules, 'min_rest_days', 'days', 2);
+
+  const checkWeeklyHours = isRuleEnabled(activeRules, 'max_weekly_hours');
+  const checkRestDays = isRuleEnabled(activeRules, 'min_rest_days');
+  const checkPolySameDay = isRuleEnabled(activeRules, 'no_polyclinic_same_day');
+  const checkPolyPrevDay = isRuleEnabled(activeRules, 'no_polyclinic_prev_day');
+  const checkUnavailable = isRuleEnabled(activeRules, 'respect_unavailable');
+  const checkSlotTypes = isRuleEnabled(activeRules, 'respect_slot_types');
+  const checkMonthlyLimits = isRuleEnabled(activeRules, 'respect_monthly_limits');
+  const deptOnlyPriority = isRuleEnabled(activeRules, 'dept_only_priority');
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const schedule: ScheduleEntry[] = [];
@@ -73,27 +98,53 @@ export function generateSchedule(
     const nextWeekday = jsToWeekday(nextDate.getDay());
     const nextDateStr = nextDate.toISOString().split('T')[0];
 
-    // ===== COLUMN C: REPUBLIC =====
-    const eligibleR = doctors.filter(doc => {
-      if (!doc.canRepublic) return false;
-      if (isUnavailable(doc, dateStr)) return false;
-      if (hasPolyclinic(doc, weekday)) return false;
-      // Next day polyclinic conflict (shift ends 8am, polyclinic starts same morning)
-      if (day < daysInMonth && hasPolyclinic(doc, nextWeekday) && !isUnavailable(doc, nextDateStr)) return false;
-      // Rest: no shift on day-1 or day+1 (min 2 day gap)
-      const st = states[doc.id];
-      if (st.assignedDays.includes(day - 1) || st.assignedDays.includes(day + 1)) return false;
-      // Weekly hours
-      const currentWeekHours = st.weeklyHours[weekNum] || 0;
-      if (currentWeekHours + shiftDuration > maxWeeklyHours) return false;
-      // Republic monthly limit
-      if (doc.maxRepublicPerMonth !== null && st.republicCount >= doc.maxRepublicPerMonth) return false;
-      // Total monthly limit
-      if (doc.maxTotalPerMonth !== null && st.totalCount >= doc.maxTotalPerMonth) return false;
-      return true;
-    });
+    // ===== Eligibility check function =====
+    const isEligible = (doc: Doctor, slot: 'republic' | 'department', excludeId?: string): boolean => {
+      if (excludeId && doc.id === excludeId) return false;
 
-    // Sort: least total shifts first, then least republic, then random
+      // Slot type restrictions
+      if (checkSlotTypes) {
+        if (slot === 'republic' && !doc.canRepublic) return false;
+        if (slot === 'department' && !doc.canDepartment) return false;
+      }
+
+      // Unavailable dates
+      if (checkUnavailable && isUnavailable(doc, dateStr)) return false;
+
+      // Polyclinic same day
+      if (checkPolySameDay && hasPolyclinic(doc, weekday)) return false;
+
+      // Polyclinic next day
+      if (checkPolyPrevDay && day < daysInMonth && hasPolyclinic(doc, nextWeekday) && !isUnavailable(doc, nextDateStr)) return false;
+
+      const st = states[doc.id];
+
+      // Rest between shifts
+      if (checkRestDays) {
+        for (let gap = 1; gap < minRestDays; gap++) {
+          if (st.assignedDays.includes(day - gap) || st.assignedDays.includes(day + gap)) return false;
+        }
+      }
+
+      // Weekly hours
+      if (checkWeeklyHours) {
+        const currentWeekHours = st.weeklyHours[weekNum] || 0;
+        if (currentWeekHours + shiftDuration > maxWeeklyHours) return false;
+      }
+
+      // Monthly limits
+      if (checkMonthlyLimits) {
+        if (slot === 'republic' && doc.maxRepublicPerMonth !== null && st.republicCount >= doc.maxRepublicPerMonth) return false;
+        if (slot === 'department' && doc.maxDepartmentPerMonth !== null && st.departmentCount >= doc.maxDepartmentPerMonth) return false;
+        if (doc.maxTotalPerMonth !== null && st.totalCount >= doc.maxTotalPerMonth) return false;
+      }
+
+      return true;
+    };
+
+    // ===== COLUMN C: REPUBLIC =====
+    const eligibleR = doctors.filter(doc => isEligible(doc, 'republic'));
+
     eligibleR.sort((a, b) => {
       const sa = states[a.id], sb = states[b.id];
       if (sa.totalCount !== sb.totalCount) return sa.totalCount - sb.totalCount;
@@ -114,26 +165,14 @@ export function generateSchedule(
     }
 
     // ===== COLUMN D: DEPARTMENT =====
-    const eligibleD = doctors.filter(doc => {
-      if (!doc.canDepartment) return false;
-      if (chosenR && doc.id === chosenR.id) return false; // can't be same as republic
-      if (isUnavailable(doc, dateStr)) return false;
-      if (hasPolyclinic(doc, weekday)) return false;
-      if (day < daysInMonth && hasPolyclinic(doc, nextWeekday) && !isUnavailable(doc, nextDateStr)) return false;
-      const st = states[doc.id];
-      if (st.assignedDays.includes(day - 1) || st.assignedDays.includes(day + 1)) return false;
-      const currentWeekHours = st.weeklyHours[weekNum] || 0;
-      if (currentWeekHours + shiftDuration > maxWeeklyHours) return false;
-      if (doc.maxDepartmentPerMonth !== null && st.departmentCount >= doc.maxDepartmentPerMonth) return false;
-      if (doc.maxTotalPerMonth !== null && st.totalCount >= doc.maxTotalPerMonth) return false;
-      return true;
-    });
+    const eligibleD = doctors.filter(doc => isEligible(doc, 'department', chosenR?.id));
 
-    // Sort: prioritize department-only doctors, then least total, then random
     eligibleD.sort((a, b) => {
-      // Department-only doctors first (canRepublic=false)
-      if (!a.canRepublic && b.canRepublic) return -1;
-      if (a.canRepublic && !b.canRepublic) return 1;
+      // Department-only doctors first (if rule enabled)
+      if (deptOnlyPriority) {
+        if (!a.canRepublic && b.canRepublic) return -1;
+        if (a.canRepublic && !b.canRepublic) return 1;
+      }
       const sa = states[a.id], sb = states[b.id];
       if (sa.totalCount !== sb.totalCount) return sa.totalCount - sb.totalCount;
       if (sa.departmentCount !== sb.departmentCount) return sa.departmentCount - sb.departmentCount;

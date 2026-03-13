@@ -1,4 +1,4 @@
-import { Doctor, MonthConfig, ScheduleEntry, ValidationError, DoctorStats } from './types';
+import { Doctor, MonthConfig, ScheduleEntry, ValidationError, DoctorStats, ScheduleRule } from './types';
 import { VALIDATION_MESSAGES, DEFAULT_MAX_WEEKLY_HOURS, DEFAULT_SHIFT_DURATION } from './constants';
 
 function getISOWeek(date: Date): number {
@@ -11,6 +11,25 @@ function getISOWeek(date: Date): number {
 
 function jsToWeekday(jsDay: number): number {
   return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+/** Helper: check if a rule is enabled */
+function isEnabled(rules: ScheduleRule[], type: string): boolean {
+  const rule = rules.find(r => r.type === type);
+  return rule ? rule.enabled : true;
+}
+
+/** Helper: get rule severity */
+function getSeverity(rules: ScheduleRule[], type: string): 'error' | 'warning' {
+  const rule = rules.find(r => r.type === type);
+  return rule?.severity || 'error';
+}
+
+/** Helper: get rule param */
+function getParam(rules: ScheduleRule[], type: string, param: string, defaultVal: number): number {
+  const rule = rules.find(r => r.type === type);
+  if (!rule) return defaultVal;
+  return (rule.params[param] as number) ?? defaultVal;
 }
 
 /** Calculate stats for each doctor from the schedule */
@@ -57,14 +76,19 @@ export function calculateStats(
   return Object.values(statsMap);
 }
 
-/** Validate the full schedule against all rules */
+/** Validate the full schedule against dynamic rules */
 export function validateSchedule(
   schedule: ScheduleEntry[],
   doctors: Doctor[],
-  config: MonthConfig
+  config: MonthConfig,
+  rules?: ScheduleRule[]
 ): ValidationError[] {
   const errors: ValidationError[] = [];
-  const maxWeeklyHours = config.maxWeeklyHours || DEFAULT_MAX_WEEKLY_HOURS;
+  const activeRules = rules || [];
+  const maxWeeklyHours = getParam(activeRules, 'max_weekly_hours', 'hours', config.maxWeeklyHours || DEFAULT_MAX_WEEKLY_HOURS);
+  const minRestDays = getParam(activeRules, 'min_rest_days', 'days', 2);
+  const balanceThreshold = getParam(activeRules, 'balance_distribution', 'threshold', 1.5);
+
   const doctorMap = new Map(doctors.map(d => [d.id, d]));
   const stats = calculateStats(schedule, doctors, config);
   const statsMap = new Map(stats.map(s => [s.doctorId, s]));
@@ -84,20 +108,23 @@ export function validateSchedule(
   }
 
   for (const entry of schedule) {
-    // 1.6 Every day must have republic and department
-    if (!entry.republicDoctor) {
-      errors.push({
-        type: 'error',
-        message: VALIDATION_MESSAGES.SLOT_EMPTY(entry.day, 'Respublika'),
-        day: entry.day,
-      });
-    }
-    if (!entry.departmentDoctor) {
-      errors.push({
-        type: 'error',
-        message: VALIDATION_MESSAGES.SLOT_EMPTY(entry.day, 'Skyrius'),
-        day: entry.day,
-      });
+    // require_both_slots
+    if (isEnabled(activeRules, 'require_both_slots')) {
+      const sev = getSeverity(activeRules, 'require_both_slots');
+      if (!entry.republicDoctor) {
+        errors.push({
+          type: sev,
+          message: VALIDATION_MESSAGES.SLOT_EMPTY(entry.day, 'Respublika'),
+          day: entry.day,
+        });
+      }
+      if (!entry.departmentDoctor) {
+        errors.push({
+          type: sev,
+          message: VALIDATION_MESSAGES.SLOT_EMPTY(entry.day, 'Skyrius'),
+          day: entry.day,
+        });
+      }
     }
 
     // Check each assigned doctor
@@ -110,52 +137,57 @@ export function validateSchedule(
       const doctor = doctorMap.get(doctorId);
       if (!doctor) continue;
 
-      // 1.4 Unavailable dates
-      if (doctor.unavailableDates.includes(entry.date)) {
+      // respect_unavailable
+      if (isEnabled(activeRules, 'respect_unavailable') && doctor.unavailableDates.includes(entry.date)) {
         errors.push({
-          type: 'error',
+          type: getSeverity(activeRules, 'respect_unavailable'),
           message: VALIDATION_MESSAGES.UNAVAILABLE(doctor.name, entry.day),
           day: entry.day,
           doctorId,
         });
       }
 
-      // 1.5 Category restrictions
-      if (slot === 'respublika' && !doctor.canRepublic) {
-        errors.push({
-          type: 'error',
-          message: VALIDATION_MESSAGES.CANNOT_REPUBLIC(doctor.name),
-          day: entry.day,
-          doctorId,
-        });
-      }
-      if (slot === 'skyrius' && !doctor.canDepartment) {
-        errors.push({
-          type: 'error',
-          message: VALIDATION_MESSAGES.CANNOT_DEPARTMENT(doctor.name),
-          day: entry.day,
-          doctorId,
-        });
-      }
-
-      // 1.3 Polyclinic conflict
-      const weekday = entry.weekday;
-      if (doctor.polyclinicSchedule.some(s => s.weekday === weekday)) {
-        errors.push({
-          type: 'error',
-          message: VALIDATION_MESSAGES.POLYCLINIC_CONFLICT(doctor.name, entry.day),
-          day: entry.day,
-          doctorId,
-        });
+      // respect_slot_types
+      if (isEnabled(activeRules, 'respect_slot_types')) {
+        const sev = getSeverity(activeRules, 'respect_slot_types');
+        if (slot === 'respublika' && !doctor.canRepublic) {
+          errors.push({
+            type: sev,
+            message: VALIDATION_MESSAGES.CANNOT_REPUBLIC(doctor.name),
+            day: entry.day,
+            doctorId,
+          });
+        }
+        if (slot === 'skyrius' && !doctor.canDepartment) {
+          errors.push({
+            type: sev,
+            message: VALIDATION_MESSAGES.CANNOT_DEPARTMENT(doctor.name),
+            day: entry.day,
+            doctorId,
+          });
+        }
       }
 
-      // 1.3 Next day polyclinic conflict
-      if (entry.day < schedule.length) {
+      // no_polyclinic_same_day
+      if (isEnabled(activeRules, 'no_polyclinic_same_day')) {
+        const weekday = entry.weekday;
+        if (doctor.polyclinicSchedule.some(s => s.weekday === weekday)) {
+          errors.push({
+            type: getSeverity(activeRules, 'no_polyclinic_same_day'),
+            message: VALIDATION_MESSAGES.POLYCLINIC_CONFLICT(doctor.name, entry.day),
+            day: entry.day,
+            doctorId,
+          });
+        }
+      }
+
+      // no_polyclinic_prev_day
+      if (isEnabled(activeRules, 'no_polyclinic_prev_day') && entry.day < schedule.length) {
         const nextDate = new Date(config.year, config.month - 1, entry.day + 1);
         const nextWeekday = jsToWeekday(nextDate.getDay());
         if (doctor.polyclinicSchedule.some(s => s.weekday === nextWeekday)) {
           errors.push({
-            type: 'error',
+            type: getSeverity(activeRules, 'no_polyclinic_prev_day'),
             message: VALIDATION_MESSAGES.POLYCLINIC_NEXT_DAY(doctor.name, entry.day),
             day: entry.day,
             doctorId,
@@ -170,66 +202,85 @@ export function validateSchedule(
     const days = doctorDays[doctor.id] || [];
     const sortedDays = days.map(d => d.day).sort((a, b) => a - b);
 
-    // 1.2 Rest between shifts (min 2 calendar days gap)
-    for (let i = 1; i < sortedDays.length; i++) {
-      if (sortedDays[i] - sortedDays[i - 1] < 2) {
-        errors.push({
-          type: 'error',
-          message: VALIDATION_MESSAGES.CONSECUTIVE_SHIFTS(doctor.name, sortedDays[i - 1], sortedDays[i]),
-          doctorId: doctor.id,
-        });
+    // min_rest_days
+    if (isEnabled(activeRules, 'min_rest_days')) {
+      for (let i = 1; i < sortedDays.length; i++) {
+        if (sortedDays[i] - sortedDays[i - 1] < minRestDays) {
+          errors.push({
+            type: getSeverity(activeRules, 'min_rest_days'),
+            message: VALIDATION_MESSAGES.CONSECUTIVE_SHIFTS(doctor.name, sortedDays[i - 1], sortedDays[i]),
+            doctorId: doctor.id,
+          });
+        }
       }
     }
 
     const docStats = statsMap.get(doctor.id);
     if (!docStats) continue;
 
-    // 1.1 Weekly hours
-    for (const [weekStr, hours] of Object.entries(docStats.weeklyHours)) {
-      if (hours > maxWeeklyHours) {
+    // max_weekly_hours
+    if (isEnabled(activeRules, 'max_weekly_hours')) {
+      for (const [weekStr, hours] of Object.entries(docStats.weeklyHours)) {
+        if (hours > maxWeeklyHours) {
+          errors.push({
+            type: getSeverity(activeRules, 'max_weekly_hours'),
+            message: VALIDATION_MESSAGES.WEEKLY_HOURS_EXCEEDED(doctor.name, Number(weekStr), hours),
+            doctorId: doctor.id,
+          });
+        }
+      }
+    }
+
+    // respect_monthly_limits
+    if (isEnabled(activeRules, 'respect_monthly_limits')) {
+      const sev = getSeverity(activeRules, 'respect_monthly_limits');
+      if (doctor.maxRepublicPerMonth !== null && docStats.republicCount > doctor.maxRepublicPerMonth) {
         errors.push({
-          type: 'error',
-          message: VALIDATION_MESSAGES.WEEKLY_HOURS_EXCEEDED(doctor.name, Number(weekStr), hours),
+          type: sev,
+          message: VALIDATION_MESSAGES.REPUBLIC_LIMIT(doctor.name, docStats.republicCount, doctor.maxRepublicPerMonth),
+          doctorId: doctor.id,
+        });
+      }
+      if (doctor.maxDepartmentPerMonth !== null && docStats.departmentCount > doctor.maxDepartmentPerMonth) {
+        errors.push({
+          type: sev,
+          message: VALIDATION_MESSAGES.DEPARTMENT_LIMIT(doctor.name, docStats.departmentCount, doctor.maxDepartmentPerMonth),
+          doctorId: doctor.id,
+        });
+      }
+      if (doctor.maxTotalPerMonth !== null && docStats.totalCount > doctor.maxTotalPerMonth) {
+        errors.push({
+          type: sev,
+          message: VALIDATION_MESSAGES.TOTAL_LIMIT(doctor.name, docStats.totalCount, doctor.maxTotalPerMonth),
           doctorId: doctor.id,
         });
       }
     }
 
-    // 1.5 Monthly limits
-    if (doctor.maxRepublicPerMonth !== null && docStats.republicCount > doctor.maxRepublicPerMonth) {
+    // max_weekend_shifts (custom rule type)
+    const weekendRule = activeRules.find(r => r.type === 'max_weekend_shifts' && r.enabled);
+    if (weekendRule && docStats.weekendCount > ((weekendRule.params.max as number) || 999)) {
       errors.push({
-        type: 'error',
-        message: VALIDATION_MESSAGES.REPUBLIC_LIMIT(doctor.name, docStats.republicCount, doctor.maxRepublicPerMonth),
-        doctorId: doctor.id,
-      });
-    }
-    if (doctor.maxDepartmentPerMonth !== null && docStats.departmentCount > doctor.maxDepartmentPerMonth) {
-      errors.push({
-        type: 'error',
-        message: VALIDATION_MESSAGES.DEPARTMENT_LIMIT(doctor.name, docStats.departmentCount, doctor.maxDepartmentPerMonth),
-        doctorId: doctor.id,
-      });
-    }
-    if (doctor.maxTotalPerMonth !== null && docStats.totalCount > doctor.maxTotalPerMonth) {
-      errors.push({
-        type: 'error',
-        message: VALIDATION_MESSAGES.TOTAL_LIMIT(doctor.name, docStats.totalCount, doctor.maxTotalPerMonth),
+        type: weekendRule.severity,
+        message: `${doctor.name}: ${docStats.weekendCount} savaitgaliniai budėjimai viršija limitą (max ${weekendRule.params.max})`,
         doctorId: doctor.id,
       });
     }
   }
 
-  // 2.1 Balance check (soft)
-  const activeDoctors = stats.filter(s => s.totalCount > 0 || doctors.find(d => d.id === s.doctorId));
-  const totalShifts = stats.reduce((sum, s) => sum + s.totalCount, 0);
-  const average = totalShifts / doctors.length;
-  for (const docStats of activeDoctors) {
-    if (Math.abs(docStats.totalCount - average) > 1.5) {
-      errors.push({
-        type: 'warning',
-        message: VALIDATION_MESSAGES.UNBALANCED(docStats.name, docStats.totalCount, average),
-        doctorId: docStats.doctorId,
-      });
+  // balance_distribution
+  if (isEnabled(activeRules, 'balance_distribution')) {
+    const activeDoctors = stats.filter(s => s.totalCount > 0 || doctors.find(d => d.id === s.doctorId));
+    const totalShifts = stats.reduce((sum, s) => sum + s.totalCount, 0);
+    const average = totalShifts / doctors.length;
+    for (const docStats of activeDoctors) {
+      if (Math.abs(docStats.totalCount - average) > balanceThreshold) {
+        errors.push({
+          type: getSeverity(activeRules, 'balance_distribution'),
+          message: VALIDATION_MESSAGES.UNBALANCED(docStats.name, docStats.totalCount, average),
+          doctorId: docStats.doctorId,
+        });
+      }
     }
   }
 

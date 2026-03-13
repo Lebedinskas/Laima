@@ -73,6 +73,19 @@ export function getHolidaysForMonth(year: number, month: number): { day: number;
     .map(h => ({ day: h.day, name: h.name }));
 }
 
+// Helper: format polyclinic schedule as human-readable string
+// e.g., "Pirm. 11-13; Treč. 9-12"
+const WEEKDAY_ABBREV = ['Pirm.', 'Antr.', 'Treč.', 'Ketv.', 'Penkt.', 'Šešt.', 'Sekm.'] as const;
+
+export function formatPolyclinicSchedule(slots: { weekday: number; startHour: number; endHour: number }[]): string {
+  if (slots.length === 0) return '—';
+  return slots
+    .slice()
+    .sort((a, b) => a.weekday - b.weekday)
+    .map(s => `${WEEKDAY_ABBREV[s.weekday]} ${s.startHour}-${s.endHour}`)
+    .join('; ');
+}
+
 export const DEFAULT_MAX_WEEKLY_HOURS = 55.5;
 export const DEFAULT_SHIFT_DURATION = 24;
 export const MIN_REST_DAYS = 2; // min gap between shifts in calendar days

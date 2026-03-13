@@ -65,7 +65,7 @@ export function ScheduleTable() {
             <TableRow className="bg-blue-50">
               <TableHead className="w-16 text-center font-semibold">Diena</TableHead>
               <TableHead className="min-w-[150px] font-semibold">
-                Klinika<br />
+                Skubiosios med. klinika<br />
                 <span className="text-xs font-normal text-muted-foreground">8-16 val. (darbo d.)</span>
               </TableHead>
               <TableHead className="min-w-[150px] font-semibold">
@@ -74,11 +74,11 @@ export function ScheduleTable() {
               </TableHead>
               <TableHead className="min-w-[150px] font-semibold">
                 Už skyrių<br />
-                <span className="text-xs font-normal text-muted-foreground">8-8 val.</span>
+                <span className="text-xs font-normal text-muted-foreground">8-8 val. poilsio/švent. d.,<br />16-8 val. darbo d.</span>
               </TableHead>
               <TableHead className="min-w-[150px] font-semibold">
-                Rezidentai<br />
-                <span className="text-xs font-normal text-muted-foreground">8-8 val.</span>
+                Gyd. rezidentai<br />
+                <span className="text-xs font-normal text-muted-foreground">8-8 val. poilsio/švent. d.,<br />16-8 val. darbo d.</span>
               </TableHead>
             </TableRow>
           </TableHeader>

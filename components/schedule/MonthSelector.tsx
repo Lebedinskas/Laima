@@ -14,7 +14,7 @@ function jsToWeekday(jsDay: number): number {
 }
 
 export function MonthSelector() {
-  const { config, setConfig, generate, schedule } = useScheduleStore();
+  const { config, setConfig, generate, generateYear, switchMonth, schedule, scheduleCache, yearGenerated } = useScheduleStore();
 
   // Auto-fill LT holidays when holidays array is empty (after year/month change)
   useEffect(() => {
@@ -38,9 +38,27 @@ export function MonthSelector() {
     setConfig({ ...config, holidays: newHolidays });
   };
 
-  const handleGenerate = () => {
-    generate();
+  const handleMonthChange = (month: number) => {
+    if (yearGenerated || Object.keys(scheduleCache).length > 0) {
+      switchMonth(config.year, month);
+    } else {
+      setConfig({ ...config, month, holidays: [] });
+    }
   };
+
+  const handleYearChange = (year: number) => {
+    if (yearGenerated || Object.keys(scheduleCache).length > 0) {
+      switchMonth(year, config.month);
+    } else {
+      setConfig({ ...config, year, holidays: [] });
+    }
+  };
+
+  // Count how many months have schedules in cache
+  const cachedMonths = Object.keys(scheduleCache).filter(k => {
+    const entries = scheduleCache[k];
+    return entries && entries.length > 0;
+  }).length;
 
   // Build mini calendar for the month
   const firstDayWeekday = jsToWeekday(new Date(config.year, config.month - 1, 1).getDay());
@@ -54,7 +72,7 @@ export function MonthSelector() {
         <Label className="text-sm">Metai</Label>
         <Select
           value={config.year.toString()}
-          onValueChange={(v) => v && setConfig({ ...config, year: parseInt(v), holidays: [] })}
+          onValueChange={(v) => v && handleYearChange(parseInt(v))}
         >
           <SelectTrigger className="w-24">
             <SelectValue />
@@ -71,15 +89,21 @@ export function MonthSelector() {
         <Label className="text-sm">Mėnuo</Label>
         <Select
           value={config.month.toString()}
-          onValueChange={(v) => v && setConfig({ ...config, month: parseInt(v), holidays: [] })}
+          onValueChange={(v) => v && handleMonthChange(parseInt(v))}
         >
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MONTH_NAMES.map((name, i) => (
-              <SelectItem key={i} value={(i + 1).toString()}>{name}</SelectItem>
-            ))}
+            {MONTH_NAMES.map((name, i) => {
+              const key = `${config.year}-${i + 1}`;
+              const hasCached = scheduleCache[key]?.length > 0;
+              return (
+                <SelectItem key={i} value={(i + 1).toString()}>
+                  {name} {hasCached && '•'}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -110,7 +134,6 @@ export function MonthSelector() {
               <p className="text-xs font-medium text-muted-foreground">
                 Paspauskite dieną — pažymėti/atžymėti šventę
               </p>
-              {/* LT auto-detected holidays */}
               {ltHolidays.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold">LT šventės šį mėnesį:</p>
@@ -126,7 +149,6 @@ export function MonthSelector() {
                   ))}
                 </div>
               )}
-              {/* Mini calendar */}
               <div>
                 <p className="text-xs font-semibold mb-1">Kalendorius:</p>
                 <div className="grid grid-cols-7 gap-0.5 text-center">
@@ -162,9 +184,24 @@ export function MonthSelector() {
         </Popover>
       </div>
 
-      <Button onClick={handleGenerate} className="bg-blue-600 hover:bg-blue-700">
-        {schedule.length > 0 ? 'Pergeneruoti' : 'Generuoti grafiką'}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button onClick={() => generate()} className="bg-blue-600 hover:bg-blue-700">
+          {schedule.length > 0 ? 'Pergeneruoti' : 'Generuoti'}
+        </Button>
+        <Button
+          onClick={() => generateYear()}
+          variant="outline"
+          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+        >
+          Metams
+        </Button>
+      </div>
+
+      {cachedMonths > 1 && (
+        <Badge variant="secondary" className="text-xs">
+          {cachedMonths} mėn. sugeneruota
+        </Badge>
+      )}
     </div>
   );
 }

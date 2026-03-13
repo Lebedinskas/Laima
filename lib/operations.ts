@@ -1,4 +1,4 @@
-import { Doctor, MonthConfig, ScheduleEntry, ValidationError } from './types';
+import { Doctor, MonthConfig, ScheduleEntry, ValidationError, ScheduleRule } from './types';
 import { validateSchedule } from './validator';
 
 type SlotType = 'republicDoctor' | 'departmentDoctor' | 'residentDoctor';
@@ -10,7 +10,8 @@ export function checkSwapFeasibility(
   config: MonthConfig,
   day: number,
   slot: SlotType,
-  newDoctorId: string | null
+  newDoctorId: string | null,
+  rules?: ScheduleRule[]
 ): { feasible: boolean; errors: ValidationError[]; warnings: ValidationError[] } {
   // Create modified schedule
   const newSchedule = schedule.map(entry => {
@@ -25,7 +26,7 @@ export function checkSwapFeasibility(
     return entry;
   });
 
-  const allErrors = validateSchedule(newSchedule, doctors, config);
+  const allErrors = validateSchedule(newSchedule, doctors, config, rules);
   const errors = allErrors.filter(e => e.type === 'error');
   const warnings = allErrors.filter(e => e.type === 'warning');
 
@@ -43,9 +44,10 @@ export function swapDoctor(
   config: MonthConfig,
   day: number,
   slot: SlotType,
-  newDoctorId: string | null
+  newDoctorId: string | null,
+  rules?: ScheduleRule[]
 ): { schedule: ScheduleEntry[]; errors: ValidationError[] } | null {
-  const check = checkSwapFeasibility(schedule, doctors, config, day, slot, newDoctorId);
+  const check = checkSwapFeasibility(schedule, doctors, config, day, slot, newDoctorId, rules);
 
   const newSchedule = schedule.map(entry => {
     if (entry.day === day) {
@@ -70,7 +72,8 @@ export function suggestAlternatives(
   doctors: Doctor[],
   config: MonthConfig,
   day: number,
-  slot: SlotType
+  slot: SlotType,
+  rules?: ScheduleRule[]
 ): { doctorId: string; name: string; errors: ValidationError[] }[] {
   const results: { doctorId: string; name: string; errors: ValidationError[] }[] = [];
   const entry = schedule.find(e => e.day === day);
@@ -84,7 +87,7 @@ export function suggestAlternatives(
     if (slot === 'republicDoctor' && entry.departmentDoctor === doctor.id) continue;
     if (slot === 'departmentDoctor' && entry.republicDoctor === doctor.id) continue;
 
-    const check = checkSwapFeasibility(schedule, doctors, config, day, slot, doctor.id);
+    const check = checkSwapFeasibility(schedule, doctors, config, day, slot, doctor.id, rules);
     results.push({
       doctorId: doctor.id,
       name: doctor.name,
