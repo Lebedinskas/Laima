@@ -408,7 +408,8 @@ async function generateScheduleILP(
     const solution = highs.solve(lpProblem, {
       time_limit: 10,
       mip_rel_gap: 0.01,
-      output_flag: false,
+      // Note: do NOT set output_flag: false — HiGHS 1.8.0 bug causes
+      // "Unable to parse solution" when output is suppressed for MIP problems
     });
 
     if (solution.Status !== 'Optimal') {
