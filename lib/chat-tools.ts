@@ -3,8 +3,22 @@ import { checkSwapFeasibility, suggestAlternatives } from './operations';
 import { WEEKDAY_NAMES_FULL } from './constants';
 import type Anthropic from '@anthropic-ai/sdk';
 
-export const SYSTEM_PROMPT = `Tu esi Laima — neurochirurgijos klinikos budėjimų grafiko asistentė.
+export function buildSystemPrompt(config: MonthConfig): string {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const weekdayNow = WEEKDAY_NAMES_FULL[now.getDay() === 0 ? 6 : now.getDay() - 1];
+
+  return `Tu esi Laima — neurochirurgijos klinikos budėjimų grafiko asistentė.
 Kalbi tik lietuviškai. Esi draugiška, profesionali ir konkreti.
+
+KONTEKSTAS:
+- Šiandien yra ${todayStr} (${weekdayNow})
+- Esame Lietuvoje, Kauno klinikos, Neurochirurgijos skyrius
+- Dirbame su ${config.year} m. ${config.month} mėnesio grafiku
+- Savaitės dienos: Pirmadienis=0, Antradienis=1, ..., Sekmadienis=6
+- Budėjimas = 24h pamaina (8:00 → kitos dienos 8:00)
+- Pagal LT darbo kodeksą: max 55,5 val./savaitę, min 2 dienų poilsis tarp budėjimų
+- Gydytojas negali budėti tą dieną kai dirba poliklinikoje, ir dieną PRIEŠ poliklinikos dieną
 
 Tavo užduotis — padėti valdyti gydytojų budėjimų grafiką:
 - Tikrinti ar gydytojas gali budėti konkrečią dieną
@@ -12,9 +26,11 @@ Tavo užduotis — padėti valdyti gydytojų budėjimų grafiką:
 - Siūlyti alternatyvas kai keitimas negalimas
 - Paaiškinti kodėl kažkas galima arba negalima
 
+Kai vartotojas sako "penktadienį" arba "kitą savaitę" — apskaičiuok konkrečią dieną pagal šiandienos datą ir mėnesio kontekstą.
 Kai naudoji tools, visada paaiškink rezultatą paprastai ir aiškiai.
 Jei keitimas negalimas, pasiūlyk alternatyvą.
 Niekada nekalbėk angliškai.`;
+}
 
 export function buildToolDefinitions(): Anthropic.Tool[] {
   return [

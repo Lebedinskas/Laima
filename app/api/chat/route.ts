@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { SYSTEM_PROMPT, buildToolDefinitions, handleToolCall } from '@/lib/chat-tools';
+import { buildSystemPrompt, buildToolDefinitions, handleToolCall } from '@/lib/chat-tools';
 import { Doctor, MonthConfig, ScheduleEntry } from '@/lib/types';
 import { WEEKDAY_NAMES_SHORT, MONTH_NAMES } from '@/lib/constants';
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     let response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(config),
       tools,
       messages,
     });
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       response = await client.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: buildSystemPrompt(config),
         tools,
         messages,
       });
