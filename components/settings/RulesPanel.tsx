@@ -17,13 +17,6 @@ import {
   DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from '@/components/ui/select';
 
 const PARAM_LABELS: Record<string, string> = {
   hours: 'Valandos',
@@ -154,43 +147,52 @@ function RuleCard({ rule }: { rule: ScheduleRule }) {
 function AddRuleDialog() {
   const { addRule } = useScheduleStore();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [severity, setSeverity] = useState<'error' | 'warning'>('warning');
-  const [paramName, setParamName] = useState('');
-  const [paramValue, setParamValue] = useState('');
+  const [input, setInput] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleAdd = () => {
-    if (!name.trim()) return;
+  const handleAdd = async () => {
+    const text = input.trim();
+    if (!text || analyzing) return;
 
-    const params: Record<string, number | string | boolean> = {};
-    if (paramName.trim() && paramValue.trim()) {
-      const num = parseFloat(paramValue);
-      params[paramName.trim()] = isNaN(num) ? paramValue.trim() : num;
+    setAnalyzing(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/rules/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: text, description: text }),
+      });
+
+      if (!res.ok) throw new Error('API error');
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const rule: ScheduleRule = {
+        id: `custom_${Date.now()}`,
+        name: data.refinedName || text,
+        description: data.refinedDescription || text,
+        type: data.type as RuleType,
+        enabled: true,
+        severity: data.severity || 'warning',
+        params: data.params || {},
+        builtIn: false,
+      };
+
+      addRule(rule);
+      setInput('');
+      setOpen(false);
+    } catch {
+      setError('Nepavyko analizuoti taisyklės. Bandykite dar kartą.');
+    } finally {
+      setAnalyzing(false);
     }
-
-    const rule: ScheduleRule = {
-      id: `custom_${Date.now()}`,
-      name: name.trim(),
-      description: description.trim() || name.trim(),
-      type: 'custom' as RuleType,
-      enabled: true,
-      severity,
-      params,
-      builtIn: false,
-    };
-
-    addRule(rule);
-    setName('');
-    setDescription('');
-    setSeverity('warning');
-    setParamName('');
-    setParamValue('');
-    setOpen(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setError(''); setAnalyzing(false); } }}>
       <DialogTrigger render={
         <Button variant="outline" size="sm" className="text-xs" />
       }>
@@ -200,65 +202,42 @@ function AddRuleDialog() {
         <DialogHeader>
           <DialogTitle>Nauja taisyklė</DialogTitle>
           <DialogDescription>
-            Sukurkite savo taisyklę grafiko generavimui
+            Aprašykite taisyklę savo žodžiais — sistema automatiškai ją klasifikuos ir pritaikys
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <Label className="text-xs">Pavadinimas</Label>
+            <Label className="text-xs">Aprašykite taisyklę</Label>
             <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Pvz.: Max 3 savaitgalio budėjimai"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Pvz.: Ne daugiau 3 savaitgalio budėjimų per mėnesį"
               className="mt-1"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+              disabled={analyzing}
             />
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              Rašykite lietuviškai, pvz.: „Gydytojas negali budėti daugiau nei 2 savaitgalius", „Poilsis tarp budėjimų bent 3 dienos"
+            </p>
           </div>
-          <div>
-            <Label className="text-xs">Aprašymas</Label>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Trumpas paaiškinimas..."
-              className="mt-1"
-            />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <Label className="text-xs">Tipas</Label>
-              <select
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value as 'error' | 'warning')}
-                className="mt-1 w-full text-sm border rounded-md px-2 py-1.5 bg-white"
-              >
-                <option value="error">Klaida (blokuoja)</option>
-                <option value="warning">Perspėjimas</option>
-              </select>
+          {analyzing && (
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+              <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-blue-700">Analizuojama ir klasifikuojama...</span>
             </div>
-          </div>
-          <div className="border-t pt-3">
-            <Label className="text-xs text-muted-foreground">Parametras (neprivaloma)</Label>
-            <div className="flex gap-2 mt-1">
-              <Input
-                value={paramName}
-                onChange={(e) => setParamName(e.target.value)}
-                placeholder="Raktas (pvz.: maxShifts)"
-                className="flex-1"
-              />
-              <Input
-                value={paramValue}
-                onChange={(e) => setParamValue(e.target.value)}
-                placeholder="Reikšmė (pvz.: 3)"
-                className="w-24"
-              />
+          )}
+          {error && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+              {error}
             </div>
-          </div>
+          )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={analyzing}>
             Atšaukti
           </Button>
-          <Button onClick={handleAdd} disabled={!name.trim()}>
-            Pridėti
+          <Button onClick={handleAdd} disabled={!input.trim() || analyzing}>
+            {analyzing ? 'Analizuojama...' : 'Išsaugoti'}
           </Button>
         </DialogFooter>
       </DialogContent>
