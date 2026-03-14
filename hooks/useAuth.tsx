@@ -12,7 +12,7 @@ interface AuthContext {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
+  signOut: () => void;
   logoutReason: 'manual' | 'inactivity' | null;
 }
 
@@ -22,7 +22,7 @@ const AuthCtx = createContext<AuthContext>({
   loading: true,
   signIn: async () => ({ error: null }),
   signUp: async () => ({ error: null }),
-  signOut: async () => {},
+  signOut: () => {},
   logoutReason: null,
 });
 
@@ -40,9 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const resetTimer = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(async () => {
+      timerRef.current = setTimeout(() => {
         setLogoutReason('inactivity');
-        await supabase.auth.signOut();
+        setUser(null);
+        setSession(null);
+        supabase.auth.signOut();
       }, INACTIVITY_TIMEOUT_MS);
     };
 
@@ -86,9 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   }, [supabase.auth]);
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(() => {
     setLogoutReason('manual');
-    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+    supabase.auth.signOut();
   }, [supabase.auth]);
 
   return (
