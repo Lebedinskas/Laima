@@ -110,6 +110,18 @@ export function validateSchedule(
   const daysInMonth = new Date(config.year, config.month, 0).getDate();
 
   for (const entry of schedule) {
+    // clinicDoctor consistency check (workdays: clinicDoctor should match republicDoctor)
+    const isWorkday = !entry.isWeekend && !entry.isHoliday;
+    if (isWorkday && entry.republicDoctor && entry.clinicDoctor && entry.clinicDoctor !== entry.republicDoctor) {
+      const repDoc = doctorMap.get(entry.republicDoctor);
+      const clinDoc = doctorMap.get(entry.clinicDoctor);
+      errors.push({
+        type: 'warning',
+        message: `${entry.day} d.: klinikos gydytojas (${clinDoc?.name}) nesutampa su respublikos gydytoju (${repDoc?.name})`,
+        day: entry.day,
+      });
+    }
+
     // same doctor in both slots
     if (entry.republicDoctor && entry.departmentDoctor && entry.republicDoctor === entry.departmentDoctor) {
       const doctor = doctorMap.get(entry.republicDoctor);
@@ -283,9 +295,9 @@ export function validateSchedule(
 
   // balance_distribution
   if (isEnabled(activeRules, 'balance_distribution')) {
-    const activeDoctors = stats.filter(s => s.totalCount > 0 || doctors.find(d => d.id === s.doctorId));
-    const totalShifts = stats.reduce((sum, s) => sum + s.totalCount, 0);
-    const average = totalShifts / doctors.length;
+    const activeDoctors = stats.filter(s => s.totalCount > 0);
+    const totalShifts = activeDoctors.reduce((sum, s) => sum + s.totalCount, 0);
+    const average = activeDoctors.length > 0 ? totalShifts / activeDoctors.length : 0;
     for (const docStats of activeDoctors) {
       if (Math.abs(docStats.totalCount - average) > balanceThreshold) {
         errors.push({

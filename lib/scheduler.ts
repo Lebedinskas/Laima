@@ -174,8 +174,9 @@ async function generateScheduleILP(
       if (terms.length > 0) {
         constraintLines.push(`  c${cIdx++}: ${terms.join(' + ')} = 1`);
       } else {
-        // No feasible doctor for this slot — can't guarantee assignment
-        // Skip — validator will flag it
+        // No feasible doctor for this slot — ILP can't solve, fall back to greedy
+        console.warn(`ILP: no feasible doctor for day ${t + 1}, slot ${s}. Falling back to greedy.`);
+        return null;
       }
     }
   }
@@ -481,6 +482,7 @@ function generateScheduleGreedy(
   const deptOnlyPriority = isRuleEnabled(rules, 'dept_only_priority');
 
   const days = buildDayInfos(year, month, holidays);
+  const daysInMonth = days.length;
   const schedule: ScheduleEntry[] = [];
 
   interface DoctorState {
@@ -515,7 +517,7 @@ function generateScheduleGreedy(
       }
       if (checkUnavailable && isUnavailable(doc, dateStr)) return false;
       if (checkPolySameDay && hasPolyclinic(doc, weekday)) return false;
-      if (checkPolyPrevDay && day < days.length && hasPolyclinic(doc, nextWeekday)) return false;
+      if (checkPolyPrevDay && day < daysInMonth && hasPolyclinic(doc, nextWeekday)) return false;
 
       const st = states[doc.id];
       if (checkRestDays) {

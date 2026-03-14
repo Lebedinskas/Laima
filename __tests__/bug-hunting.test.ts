@@ -474,26 +474,24 @@ describe('greedy sorting: tie-breaking', () => {
 // ===== Validator: balance uses ALL doctors in denominator =====
 
 describe('validator: balance calculation includes inactive doctors', () => {
-  it('doctor with 0 shifts is included in average calculation', () => {
+  it('balance only considers active doctors (those with shifts)', () => {
     const doctors = makeDoctors(4);
     const config = makeConfig({ holidays: [] });
-    // Assign only doc1 and doc2, leave doc3 and doc4 with 0
+    // Assign heavily to doc1 (5 shifts), lightly to doc2 (1 shift)
+    // active avg = 6/2 = 3, doc1 deviation = 2 > 1.5 → should warn
+    // doc3, doc4 have 0 shifts → excluded from balance check
     const schedule = assignSchedule(makeBlankSchedule(config), [
       { day: 2, republic: 'doc1' },
       { day: 5, republic: 'doc1' },
       { day: 9, republic: 'doc1' },
       { day: 14, republic: 'doc1' },
+      { day: 19, department: 'doc1' },
       { day: 3, department: 'doc2' },
-      { day: 7, department: 'doc2' },
     ]);
-    // total=6, doctors=4, avg=1.5
-    // doc1: |4 - 1.5| = 2.5 > 1.5 → should warn
-    // doc3: |0 - 1.5| = 1.5 → exactly at threshold, NOT exceeding
-    // doc4: |0 - 1.5| = 1.5 → exactly at threshold, NOT exceeding
 
     const errors = validateSchedule(schedule, doctors, config, allRulesEnabled());
     expect(errors.some(e => e.message.includes('vidurkis') && e.doctorId === 'doc1')).toBe(true);
-    // doc3 with 0 shifts, deviation = 1.5 which is NOT > 1.5, so no warning
+    // doc3 with 0 shifts is not active, so no balance warning for them
     expect(errors.filter(e => e.message.includes('vidurkis') && e.doctorId === 'doc3')).toHaveLength(0);
   });
 });

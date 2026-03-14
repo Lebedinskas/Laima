@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     // First call
     let response = await client.messages.create({
-      model: 'claude-opus-4-20250514',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
       system: buildSystemPrompt(config),
       tools,
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
       });
 
       response = await client.messages.create({
-        model: 'claude-opus-4-20250514',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2048,
         system: buildSystemPrompt(config),
         tools,
