@@ -70,14 +70,21 @@ export function MonthSelector() {
     setStatus('generating');
     setStatusMessage(`Generuojami ${months} mėn...`);
 
+    // generatePeriod replaces scheduleCache with a NEW object when done.
+    // Detect completion by comparing object reference.
+    const cacheBefore = useScheduleStore.getState().scheduleCache;
+
     generatePeriod(months);
 
-    // Poll for completion
+    let done = false;
+    // Poll for completion — detect when scheduleCache object reference changes
     const check = setInterval(() => {
+      if (done) return;
       const current = useScheduleStore.getState();
-      const cachedCount = Object.values(current.scheduleCache).filter(s => s.length > 0).length;
-      if (cachedCount >= months) {
+      if (current.scheduleCache !== cacheBefore && current.schedule.length > 0) {
+        done = true;
         clearInterval(check);
+        const cachedCount = Object.keys(current.scheduleCache).filter(k => current.scheduleCache[k]?.length > 0).length;
         setStatus('success');
         setStatusMessage(`${cachedCount} mėn. sugeneruota!`);
       }
@@ -86,12 +93,17 @@ export function MonthSelector() {
     // Timeout scales with month count
     const timeoutMs = Math.max(30000, months * 15000);
     setTimeout(() => {
+      if (done) return;
+      done = true;
       clearInterval(check);
       const current = useScheduleStore.getState();
-      const cachedCount = Object.values(current.scheduleCache).filter(s => s.length > 0).length;
-      if (cachedCount > 0) {
+      const cachedCount = Object.keys(current.scheduleCache).filter(k => current.scheduleCache[k]?.length > 0).length;
+      if (cachedCount >= months) {
         setStatus('success');
         setStatusMessage(`${cachedCount} mėn. sugeneruota`);
+      } else if (current.schedule.length > 0) {
+        setStatus('success');
+        setStatusMessage(`${cachedCount}/${months} mėn. sugeneruota`);
       } else {
         setStatus('error');
         setStatusMessage('Generavimas užtruko per ilgai');

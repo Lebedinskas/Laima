@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 export function ScheduleTable() {
-  const { schedule, errors, config, undo, redo, undoStack, redoStack } = useScheduleStore();
+  const { schedule, errors, config, undo, redo, undoStack, redoStack, doctors } = useScheduleStore();
 
   if (schedule.length === 0) {
     return (
@@ -114,7 +114,7 @@ export function ScheduleTable() {
                     {!entry.isWeekend && !entry.isHoliday ? (
                       <div className="px-2 py-1 text-sm text-muted-foreground">
                         {entry.clinicDoctor
-                          ? useScheduleStore.getState().doctors.find(d => d.id === entry.clinicDoctor)?.name
+                          ? doctors.find(d => d.id === entry.clinicDoctor)?.name
                           : '—'}
                       </div>
                     ) : (

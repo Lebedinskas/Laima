@@ -284,7 +284,7 @@ export function validateSchedule(
 
     // max_weekend_shifts (custom rule type)
     const weekendRule = activeRules.find(r => r.type === 'max_weekend_shifts' && r.enabled);
-    if (weekendRule && docStats.weekendCount > ((weekendRule.params.maxShifts as number) || 999)) {
+    if (weekendRule && docStats.weekendCount > ((weekendRule.params.maxShifts as number) ?? 4)) {
       errors.push({
         type: weekendRule.severity,
         message: `${doctor.name}: ${docStats.weekendCount} savaitgaliniai budėjimai viršija limitą (max ${weekendRule.params.maxShifts})`,

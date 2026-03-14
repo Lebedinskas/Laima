@@ -197,7 +197,8 @@ export const useScheduleStore = create<ScheduleStore>()(
           );
 
           const key = monthKey(config.year, config.month);
-          const newCache = { ...currentState.scheduleCache, [key]: schedule };
+          // Single-month generation: only keep this month in cache
+          const newCache = { [key]: schedule };
 
           set({
             schedule,
@@ -208,6 +209,7 @@ export const useScheduleStore = create<ScheduleStore>()(
             changeHistory: [...otherHistory, ...genRecords],
             monthlySnapshots: [...otherSnapshots, snapshot],
             scheduleCache: newCache,
+            yearGenerated: false,
           });
         });
       },
@@ -479,7 +481,11 @@ export const useScheduleStore = create<ScheduleStore>()(
       },
 
       resetRules: () => {
-        set({ rules: [...defaultRules] });
+        const { schedule, doctors, config } = get();
+        const rules = [...defaultRules];
+        const errors = schedule.length > 0 ? validateSchedule(schedule, doctors, config, rules) : [];
+        const stats = schedule.length > 0 ? calculateStats(schedule, doctors, config) : [];
+        set({ rules, errors, stats });
       },
     }),
     {
@@ -538,6 +544,14 @@ export const useScheduleStore = create<ScheduleStore>()(
         // Always start with empty chat — ignore any old persisted chatMessages
         chatMessages: [],
       }),
+      onRehydrateStorage: () => (state) => {
+        // Recalculate non-persisted derived state (errors, stats) after hydration
+        if (state && state.schedule.length > 0) {
+          const errors = validateSchedule(state.schedule, state.doctors, state.config, state.rules);
+          const stats = calculateStats(state.schedule, state.doctors, state.config);
+          useScheduleStore.setState({ errors, stats });
+        }
+      },
     }
   )
 );

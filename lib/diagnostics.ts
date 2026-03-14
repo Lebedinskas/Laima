@@ -170,7 +170,7 @@ export function runDiagnostics(
   }
 
   // Balance threshold vs actual spread
-  if (dOnlyDoctors.length > 0) {
+  if (dOnlyDoctors.length > 0 && rDoctors.length > 0 && dDoctors.length > 0) {
     const rOnlySlots = daysInMonth; // ~30 R slots
     const avgR = rOnlySlots / rDoctors.length;
     const avgD = daysInMonth / dDoctors.length;
