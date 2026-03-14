@@ -497,7 +497,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         rules: state.rules,
         // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
-      version: 3,
+      version: 4,
       migrate: (persisted: unknown) => {
         const state = persisted as Record<string, unknown>;
         // v1→v2: Remove chatMessages from old localStorage entries
@@ -520,6 +520,14 @@ export const useScheduleStore = create<ScheduleStore>()(
               params: { maxShifts: 4 },
               builtIn: true,
             });
+          }
+        }
+        // v3→v4: Add role field to doctors
+        if (Array.isArray(rest.doctors)) {
+          for (const doc of rest.doctors as Record<string, unknown>[]) {
+            if (!doc.role) {
+              doc.role = 'doctor';
+            }
           }
         }
         return rest;

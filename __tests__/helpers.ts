@@ -9,6 +9,7 @@ export function dateStr(year: number, month: number, day: number): string {
 /** Create a minimal doctor for testing */
 export function makeDoctor(overrides: Partial<Doctor> & { id: string; name: string }): Doctor {
   return {
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,

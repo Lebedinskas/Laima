@@ -6,9 +6,12 @@ export interface PolyclinicSlot {
   endHour: number;
 }
 
+export type DoctorRole = 'doctor' | 'resident' | 'head';
+
 export interface Doctor {
   id: string;
   name: string;
+  role: DoctorRole;
   canRepublic: boolean;
   canDepartment: boolean;
   maxRepublicPerMonth: number | null;

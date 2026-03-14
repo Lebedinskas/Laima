@@ -4,6 +4,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'tamasauskas-a',
     name: 'Tamašauskas A.',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: 3,
@@ -19,6 +20,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'vaitkevicius',
     name: 'Vaitkevičius',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: 3,
@@ -33,6 +35,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'tamasauskas-d',
     name: 'Tamašauskas D.',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -47,6 +50,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'budenas',
     name: 'Budėnas',
+    role: 'doctor',
     canRepublic: false,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -61,6 +65,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'deltuva',
     name: 'Deltuva',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: 3,
@@ -75,6 +80,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'simaitis',
     name: 'Simaitis',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -89,6 +95,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'sliauzys',
     name: 'Šliaužys',
+    role: 'doctor',
     canRepublic: false,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -105,6 +112,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'bareikis',
     name: 'Bareikis',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -119,6 +127,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'cikotas',
     name: 'Čikotas',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -133,6 +142,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'radziunas',
     name: 'Radžiūnas',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -147,6 +157,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'tamasauskas-s',
     name: 'Tamašauskas Š.',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -161,6 +172,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'vaisvilas',
     name: 'Vaišvilas',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -175,6 +187,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'fedaravicius',
     name: 'Fedaravičius',
+    role: 'doctor',
     canRepublic: false,
     canDepartment: true,
     maxRepublicPerMonth: null,
@@ -189,6 +202,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'urbonas',
     name: 'Urbonas',
+    role: 'doctor',
     canRepublic: true,
     canDepartment: true,
     maxRepublicPerMonth: 3,
@@ -204,6 +218,7 @@ export const defaultDoctors: Doctor[] = [
   {
     id: 'piliponis',
     name: 'Piliponis',
+    role: 'doctor',
     canRepublic: false,
     canDepartment: true,
     maxRepublicPerMonth: null,

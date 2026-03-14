@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useScheduleStore } from '@/hooks/useScheduleStore';
-import { Doctor, PolyclinicSlot } from '@/lib/types';
+import { Doctor, DoctorRole, PolyclinicSlot } from '@/lib/types';
 import { WEEKDAY_NAMES_FULL } from '@/lib/constants';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
   const isNew = !doctor;
 
   const [name, setName] = useState(doctor?.name || '');
+  const [role, setRole] = useState<DoctorRole>(doctor?.role || 'doctor');
   const [canRepublic, setCanRepublic] = useState(doctor?.canRepublic ?? true);
   const [canDepartment, setCanDepartment] = useState(doctor?.canDepartment ?? true);
   const [maxRepublic, setMaxRepublic] = useState(doctor?.maxRepublicPerMonth?.toString() || '');
@@ -38,6 +39,7 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
   const handleSave = () => {
     const data: Omit<Doctor, 'id'> & { id?: string } = {
       name,
+      role,
       canRepublic,
       canDepartment,
       maxRepublicPerMonth: maxRepublic ? parseInt(maxRepublic) : null,
@@ -86,6 +88,20 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
           <div className="space-y-1">
             <Label>Vardas, pavardė</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Pvz. Petraitis A." />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Rolė</Label>
+            <Select value={role} onValueChange={(v) => v && setRole(v as DoctorRole)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="doctor">Gydytojas</SelectItem>
+                <SelectItem value="resident">Rezidentas</SelectItem>
+                <SelectItem value="head">Skyriaus vedėjas</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex gap-6">

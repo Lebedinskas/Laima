@@ -54,6 +54,13 @@ export function DoctorList() {
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5 text-xs">
+              <Badge variant="outline" className={
+                doc.role === 'head' ? 'border-purple-300 text-purple-700 bg-purple-50' :
+                doc.role === 'resident' ? 'border-teal-300 text-teal-700 bg-teal-50' :
+                ''
+              }>
+                {doc.role === 'head' ? 'Vedėjas' : doc.role === 'resident' ? 'Rezidentas' : 'Gydytojas'}
+              </Badge>
               {doc.canRepublic && <Badge variant="outline">R</Badge>}
               {doc.canDepartment && <Badge variant="outline">D</Badge>}
               {doc.maxRepublicPerMonth !== null && (
