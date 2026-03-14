@@ -399,7 +399,10 @@ describe('max_weekend_shifts validation (bugfix: params.maxShifts not params.max
       { day: 17, republic: 'doc1' }, // Saturday
     ]);
 
-    const rules = [...allRulesEnabled(), weekendRule];
+    // Override built-in max_weekend_shifts with test rule (maxShifts=2)
+    const rules = allRulesEnabled().map(r =>
+      r.type === 'max_weekend_shifts' ? weekendRule : r
+    );
     const errors = validateSchedule(schedule, [doc], config, rules);
     expect(errors.some(e => e.message.includes('savaitgaliniai') && e.message.includes('max 2'))).toBe(true);
   });
@@ -412,7 +415,9 @@ describe('max_weekend_shifts validation (bugfix: params.maxShifts not params.max
       { day: 10, republic: 'doc1' }, // Saturday — exactly 2
     ]);
 
-    const rules = [...allRulesEnabled(), weekendRule];
+    const rules = allRulesEnabled().map(r =>
+      r.type === 'max_weekend_shifts' ? weekendRule : r
+    );
     const errors = validateSchedule(schedule, [doc], config, rules);
     expect(errors.some(e => e.message.includes('savaitgaliniai'))).toBe(false);
   });
@@ -426,7 +431,9 @@ describe('max_weekend_shifts validation (bugfix: params.maxShifts not params.max
       { day: 6, republic: 'doc1' },  // Tuesday but holiday — 3 > max 2
     ]);
 
-    const rules = [...allRulesEnabled(), weekendRule];
+    const rules = allRulesEnabled().map(r =>
+      r.type === 'max_weekend_shifts' ? weekendRule : r
+    );
     const errors = validateSchedule(schedule, [doc], config, rules);
     expect(errors.some(e => e.message.includes('savaitgaliniai'))).toBe(true);
   });
@@ -599,7 +606,7 @@ describe('validator: rule severity affects error type', () => {
 // ===== VALIDATOR: BALANCE THRESHOLD MATH =====
 
 describe('validator: balance_distribution threshold math', () => {
-  it('threshold=1.5 allows ±1 deviation from average without warning', () => {
+  it('threshold=2.5 allows small deviation from average without warning', () => {
     const doctors = makeDoctors(4);
     const config = makeConfig({ holidays: [] });
     // 4 doctors, give each 3-4 shifts. Average = 3.5
@@ -624,10 +631,10 @@ describe('validator: balance_distribution threshold math', () => {
     const schedule = assignSchedule(makeBlankSchedule(config), [
       { day: 2, republic: 'doc1' }, { day: 5, republic: 'doc1' }, { day: 9, republic: 'doc1' },
       { day: 14, republic: 'doc1' }, { day: 19, republic: 'doc1' }, { day: 23, republic: 'doc1' },
+      { day: 26, republic: 'doc1' },
       { day: 3, department: 'doc2' },
     ]);
-    // doc1=6, doc2=1, doc3=0, doc4=0 → avg=1.75
-    // doc1 deviation = |6-1.75| = 4.25 > 1.5 → warning
+    // active: doc1=7, doc2=1 → avg=4, doc1 deviation = 3 > 2.5 → warning
 
     const errors = validateSchedule(schedule, doctors, config, allRulesEnabled());
     expect(errors.some(e => e.message.includes('vidurkis') && e.doctorId === 'doc1')).toBe(true);

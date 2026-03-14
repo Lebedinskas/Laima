@@ -15,6 +15,7 @@ import { ExportButtons } from '@/components/schedule/ExportButtons';
 import { Clock } from '@/components/Clock';
 import { DoctorAnalytics } from '@/components/analytics/DoctorAnalytics';
 import { RulesPanel } from '@/components/settings/RulesPanel';
+import { DiagnosticsPanel } from '@/components/settings/DiagnosticsPanel';
 import { Button } from '@/components/ui/button';
 
 export default function Home() {
@@ -96,8 +97,13 @@ export default function Home() {
                 <DoctorAnalytics />
               </TabsContent>
               <TabsContent value="rules" className="mt-4">
-                <div className="bg-white rounded-lg border p-4">
-                  <RulesPanel />
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <DiagnosticsPanel />
+                  </div>
+                  <div className="bg-white rounded-lg border p-4">
+                    <RulesPanel />
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>

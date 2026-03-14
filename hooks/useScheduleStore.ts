@@ -494,11 +494,31 @@ export const useScheduleStore = create<ScheduleStore>()(
         rules: state.rules,
         // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
-      version: 2,
+      version: 3,
       migrate: (persisted: unknown) => {
-        // Remove chatMessages from old localStorage entries
         const state = persisted as Record<string, unknown>;
+        // v1→v2: Remove chatMessages from old localStorage entries
         const { chatMessages: _, ...rest } = state;
+        // v2→v3: Update balance threshold + add max_weekend_shifts rule
+        if (Array.isArray(rest.rules)) {
+          const rules = rest.rules as ScheduleRule[];
+          const balance = rules.find(r => r.id === 'balance_distribution');
+          if (balance && balance.params.threshold === 1.5) {
+            balance.params.threshold = 2.5;
+          }
+          if (!rules.find(r => r.id === 'max_weekend_shifts')) {
+            rules.push({
+              id: 'max_weekend_shifts',
+              name: 'Max savaitgalio budėjimų',
+              description: 'Maksimalus savaitgalio/švenčių budėjimų skaičius vienam gydytojui per mėnesį',
+              type: 'max_weekend_shifts',
+              enabled: true,
+              severity: 'warning',
+              params: { maxShifts: 4 },
+              builtIn: true,
+            });
+          }
+        }
         return rest;
       },
       merge: (persisted, current) => ({

@@ -249,8 +249,7 @@ describe('validateSchedule', () => {
     it('warns when distribution is unbalanced', () => {
       const doctors = makeDoctors(4);
       const config = makeConfig();
-      // Assign heavily to doc1 (6 shifts), lightly to doc2 (1 shift)
-      // active avg = 7/2 = 3.5, doc1 deviation = 2.5 > 1.5
+      // doc1=7, doc2=1 → active avg=4, doc1 deviation=3 > 2.5
       const schedule = assignSchedule(makeBlankSchedule(config), [
         { day: 2, republic: 'doc1' },
         { day: 5, republic: 'doc1' },
@@ -258,6 +257,7 @@ describe('validateSchedule', () => {
         { day: 14, republic: 'doc1' },
         { day: 19, department: 'doc1' },
         { day: 23, department: 'doc1' },
+        { day: 26, department: 'doc1' },
         { day: 3, department: 'doc2' },
       ]);
 

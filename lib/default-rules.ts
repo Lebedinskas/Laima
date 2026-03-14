@@ -88,7 +88,7 @@ export const defaultRules: ScheduleRule[] = [
     type: 'balance_distribution',
     enabled: true,
     severity: 'warning',
-    params: { threshold: 1.5 },
+    params: { threshold: 2.5 },
     builtIn: true,
   },
   {
@@ -99,6 +99,16 @@ export const defaultRules: ScheduleRule[] = [
     enabled: true,
     severity: 'warning',
     params: {},
+    builtIn: true,
+  },
+  {
+    id: 'max_weekend_shifts',
+    name: 'Max savaitgalio budėjimų',
+    description: 'Maksimalus savaitgalio/švenčių budėjimų skaičius vienam gydytojui per mėnesį',
+    type: 'max_weekend_shifts',
+    enabled: true,
+    severity: 'warning',
+    params: { maxShifts: 4 },
     builtIn: true,
   },
 ];

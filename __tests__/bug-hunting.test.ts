@@ -477,8 +477,7 @@ describe('validator: balance calculation includes inactive doctors', () => {
   it('balance only considers active doctors (those with shifts)', () => {
     const doctors = makeDoctors(4);
     const config = makeConfig({ holidays: [] });
-    // Assign heavily to doc1 (5 shifts), lightly to doc2 (1 shift)
-    // active avg = 6/2 = 3, doc1 deviation = 2 > 1.5 → should warn
+    // doc1=7, doc2=1 → active avg=4, doc1 deviation=3 > 2.5 → should warn
     // doc3, doc4 have 0 shifts → excluded from balance check
     const schedule = assignSchedule(makeBlankSchedule(config), [
       { day: 2, republic: 'doc1' },
@@ -486,6 +485,8 @@ describe('validator: balance calculation includes inactive doctors', () => {
       { day: 9, republic: 'doc1' },
       { day: 14, republic: 'doc1' },
       { day: 19, department: 'doc1' },
+      { day: 23, department: 'doc1' },
+      { day: 26, department: 'doc1' },
       { day: 3, department: 'doc2' },
     ]);
 

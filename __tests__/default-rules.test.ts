@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { defaultRules } from '@/lib/default-rules';
 
 describe('defaultRules', () => {
-  it('has 10 built-in rules', () => {
-    expect(defaultRules).toHaveLength(10);
+  it('has 11 built-in rules', () => {
+    expect(defaultRules).toHaveLength(11);
   });
 
   it('all rules have required fields', () => {
@@ -58,7 +58,7 @@ describe('defaultRules', () => {
   it('balance_distribution has threshold param and is warning', () => {
     const rule = defaultRules.find(r => r.type === 'balance_distribution');
     expect(rule).toBeDefined();
-    expect(rule!.params.threshold).toBe(1.5);
+    expect(rule!.params.threshold).toBe(2.5);
     expect(rule!.severity).toBe('warning');
   });
 
