@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useState } from 'react';
 import { useScheduleStore } from '@/hooks/useScheduleStore';
 import {
   DropdownMenu,
@@ -64,13 +65,21 @@ function AlternativeItem({ alt, onSelect }: { alt: AlternativeResult; onSelect: 
   );
 }
 
-export function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProps) {
+export const ScheduleCell = memo(function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProps) {
   const { doctors, schedule, config, assignDoctor, rules } = useScheduleStore();
+  const [alternatives, setAlternatives] = useState<AlternativeResult[]>([]);
   const doctor = doctorId ? doctors.find(d => d.id === doctorId) : null;
 
   const baseClass = `w-full text-left px-2 py-1 text-sm hover:bg-blue-50 rounded cursor-pointer min-h-[28px] ${
     hasError ? 'bg-red-100 text-red-700 font-medium' : ''
   }`;
+
+  // Compute alternatives only when dropdown opens
+  const onOpenChange = (open: boolean) => {
+    if (open && slot !== 'residentDoctor' && schedule.length > 0) {
+      setAlternatives(suggestAlternatives(schedule, doctors, config, day, slot, rules));
+    }
+  };
 
   if (slot === 'residentDoctor') {
     return (
@@ -92,16 +101,11 @@ export function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProp
     );
   }
 
-  const alternatives = schedule.length > 0
-    ? suggestAlternatives(schedule, doctors, config, day, slot, rules)
-    : [];
-
-  // Split: clean swaps vs swaps with new issues
   const clean = alternatives.filter(a => a.newErrors.length === 0);
   const withIssues = alternatives.filter(a => a.newErrors.length > 0);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger className={baseClass}>
         {doctor?.name || '—'}
       </DropdownMenuTrigger>
@@ -150,4 +154,4 @@ export function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProp
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useTransition } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { LoginPage } from '@/components/auth/LoginPage';
@@ -18,6 +19,8 @@ import { Button } from '@/components/ui/button';
 
 export default function Home() {
   const { user, loading, signOut } = useAuth();
+  const [activeTab, setActiveTab] = useState('schedule');
+  const [, startTransition] = useTransition();
   useSupabaseSync();
 
   if (loading) {
@@ -71,7 +74,7 @@ export default function Home() {
               <ExportButtons />
             </div>
 
-            <Tabs defaultValue="schedule">
+            <Tabs value={activeTab} onValueChange={(v) => startTransition(() => setActiveTab(v))}>
               <TabsList>
                 <TabsTrigger value="schedule">Grafikas</TabsTrigger>
                 <TabsTrigger value="doctors">Gydytojai</TabsTrigger>
