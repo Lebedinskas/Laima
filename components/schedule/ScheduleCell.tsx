@@ -5,9 +5,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { suggestAlternatives } from '@/lib/operations';
+import { suggestAlternatives, AlternativeResult } from '@/lib/operations';
 
 interface ScheduleCellProps {
   day: number;
@@ -16,8 +17,55 @@ interface ScheduleCellProps {
   hasError?: boolean;
 }
 
+function buildTooltip(alt: AlternativeResult): string {
+  const lines: string[] = [];
+  if (alt.newErrors.length === 0 && alt.resolvedErrors.length === 0) {
+    lines.push('Jokių naujų problemų');
+  }
+  if (alt.resolvedErrors.length > 0) {
+    lines.push(`Išsprendžia (${alt.resolvedErrors.length}):`);
+    alt.resolvedErrors.slice(0, 3).forEach(e => lines.push(`  + ${e.message}`));
+  }
+  if (alt.newErrors.length > 0) {
+    lines.push(`Naujos pastabos (${alt.newErrors.length}):`);
+    alt.newErrors.slice(0, 3).forEach(e => lines.push(`  - ${e.message}`));
+    if (alt.newErrors.length > 3) lines.push(`  ...ir dar ${alt.newErrors.length - 3}`);
+  }
+  return lines.join('\n');
+}
+
+function AlternativeItem({ alt, onSelect }: { alt: AlternativeResult; onSelect: () => void }) {
+  const hasNewErrors = alt.newErrors.length > 0;
+  const fixes = alt.resolvedErrors.length;
+  const isClean = !hasNewErrors;
+
+  const colorClass = hasNewErrors ? 'text-amber-700' : 'text-green-700';
+  const icon = hasNewErrors ? '!' : '✓';
+
+  return (
+    <DropdownMenuItem onClick={onSelect} className={colorClass} title={buildTooltip(alt)}>
+      <span className="flex items-center gap-2 w-full">
+        <span className={hasNewErrors ? 'text-amber-500' : 'text-green-500'}>{icon}</span>
+        <span className="flex-1">{alt.name}</span>
+        {isClean && fixes > 0 && (
+          <span className="text-[10px] text-green-500">-{fixes} kl.</span>
+        )}
+        {isClean && fixes === 0 && (
+          <span className="text-[10px] text-green-400">OK</span>
+        )}
+        {hasNewErrors && (
+          <span className="text-[10px] text-amber-400">+{alt.newErrors.length}</span>
+        )}
+        {hasNewErrors && fixes > 0 && (
+          <span className="text-[10px] text-blue-400">-{fixes}</span>
+        )}
+      </span>
+    </DropdownMenuItem>
+  );
+}
+
 export function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProps) {
-  const { doctors, schedule, config, assignDoctor } = useScheduleStore();
+  const { doctors, schedule, config, assignDoctor, rules } = useScheduleStore();
   const doctor = doctorId ? doctors.find(d => d.id === doctorId) : null;
 
   const baseClass = `w-full text-left px-2 py-1 text-sm hover:bg-blue-50 rounded cursor-pointer min-h-[28px] ${
@@ -45,33 +93,60 @@ export function ScheduleCell({ day, slot, doctorId, hasError }: ScheduleCellProp
   }
 
   const alternatives = schedule.length > 0
-    ? suggestAlternatives(schedule, doctors, config, day, slot)
+    ? suggestAlternatives(schedule, doctors, config, day, slot, rules)
     : [];
+
+  // Split: clean swaps vs swaps with new issues
+  const clean = alternatives.filter(a => a.newErrors.length === 0);
+  const withIssues = alternatives.filter(a => a.newErrors.length > 0);
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={baseClass}>
         {doctor?.name || '—'}
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="max-h-80 overflow-y-auto min-w-[200px]">
+      <DropdownMenuContent className="max-h-80 overflow-y-auto min-w-[240px]">
         <DropdownMenuItem onClick={() => assignDoctor(day, slot, null)}>
           <span className="text-muted-foreground">— Tuščias —</span>
         </DropdownMenuItem>
-        {alternatives.map(alt => (
-          <DropdownMenuItem
-            key={alt.doctorId}
-            onClick={() => assignDoctor(day, slot, alt.doctorId)}
-            className={alt.errors.length > 0 ? 'text-red-500' : 'text-green-700'}
-          >
-            <span className="flex items-center gap-2">
-              <span>{alt.errors.length === 0 ? '✓' : '✗'}</span>
-              <span>{alt.name}</span>
-              {alt.errors.length > 0 && (
-                <span className="text-xs text-red-400">({alt.errors.length} kl.)</span>
-              )}
-            </span>
-          </DropdownMenuItem>
-        ))}
+
+        {clean.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] font-semibold text-green-700 uppercase tracking-wide">
+              Galima keisti ({clean.length})
+            </div>
+            {clean.map(alt => (
+              <AlternativeItem
+                key={alt.doctorId}
+                alt={alt}
+                onSelect={() => assignDoctor(day, slot, alt.doctorId)}
+              />
+            ))}
+          </>
+        )}
+
+        {withIssues.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1 text-[10px] font-semibold text-amber-600 uppercase tracking-wide">
+              Su pastabomis ({withIssues.length})
+            </div>
+            {withIssues.map(alt => (
+              <AlternativeItem
+                key={alt.doctorId}
+                alt={alt}
+                onSelect={() => assignDoctor(day, slot, alt.doctorId)}
+              />
+            ))}
+          </>
+        )}
+
+        {clean.length === 0 && withIssues.length === 0 && (
+          <div className="px-2 py-2 text-xs text-muted-foreground text-center">
+            Nėra kandidatų
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

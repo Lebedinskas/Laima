@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
-import { useScheduleStore } from '@/hooks/useScheduleStore';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { MonthSelector } from '@/components/schedule/MonthSelector';
 import { ScheduleTable } from '@/components/schedule/ScheduleTable';
@@ -19,19 +17,8 @@ import { RulesPanel } from '@/components/settings/RulesPanel';
 import { Button } from '@/components/ui/button';
 
 export default function Home() {
-  const { user, loading, signOut, logoutReason } = useAuth();
-  const clearChatSession = useScheduleStore(s => s.clearChatSession);
-  const prevUserRef = useRef<string | null>(null);
+  const { user, loading, signOut } = useAuth();
   useSupabaseSync();
-
-  // Clear chat window on fresh login (archive stays in localStorage)
-  useEffect(() => {
-    const uid = user?.id ?? null;
-    if (uid && prevUserRef.current !== uid) {
-      clearChatSession();
-    }
-    prevUserRef.current = uid;
-  }, [user?.id, clearChatSession]);
 
   if (loading) {
     return (

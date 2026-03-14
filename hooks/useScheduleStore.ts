@@ -485,7 +485,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         doctors: state.doctors,
         schedule: state.schedule,
         config: state.config,
-        chatMessages: state.chatMessages,
+        // chatMessages NOT persisted — each session starts with clean chat
         chatArchive: state.chatArchive,
         changeHistory: state.changeHistory,
         monthlySnapshots: state.monthlySnapshots,

@@ -137,7 +137,7 @@ describe('suggestAlternatives', () => {
     ]);
 
     const alts = suggestAlternatives(schedule, docs, config, 5, 'republicDoctor', allRulesEnabled());
-    // 'ok' should come before 'bad' (fewer errors)
+    // 'ok' should come before 'bad' (fewer new errors)
     const okIdx = alts.findIndex(a => a.doctorId === 'ok');
     const badIdx = alts.findIndex(a => a.doctorId === 'bad');
     if (okIdx >= 0 && badIdx >= 0) {

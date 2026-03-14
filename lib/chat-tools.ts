@@ -397,7 +397,7 @@ export function handleToolCall(
         const errorMsgs = check.errors.map(e => `- ${e.message}`).join('\n');
         // Also suggest alternatives
         const alts = suggestAlternatives(schedule, doctors, config, input.day, field);
-        const feasibleAlts = alts.filter(a => a.errors.length === 0).slice(0, 3);
+        const feasibleAlts = alts.filter(a => a.newErrors.length === 0).slice(0, 3);
         const altText = feasibleAlts.length > 0
           ? `\n\nGalimi variantai: ${feasibleAlts.map(a => a.name).join(', ')}`
           : '\n\nDeja, šiai dienai nėra tinkamų alternatyvų.';
@@ -408,15 +408,15 @@ export function handleToolCall(
     case 'suggest_alternatives': {
       const field = slotToField(input.slot);
       const alts = suggestAlternatives(schedule, doctors, config, input.day, field);
-      const feasible = alts.filter(a => a.errors.length === 0);
-      const notFeasible = alts.filter(a => a.errors.length > 0);
+      const feasible = alts.filter(a => a.newErrors.length === 0);
+      const notFeasible = alts.filter(a => a.newErrors.length > 0);
 
       let result = `${input.day} d. ${slotToLT(input.slot)} galimi gydytojai:\n\n`;
       if (feasible.length > 0) {
         result += `✓ Tinka:\n${feasible.map(a => `  - ${a.name}`).join('\n')}\n\n`;
       }
       if (notFeasible.length > 0) {
-        result += `✗ Netinka:\n${notFeasible.map(a => `  - ${a.name} (${a.errors[0]?.message || 'konfliktas'})`).join('\n')}`;
+        result += `✗ Netinka:\n${notFeasible.map(a => `  - ${a.name} (${a.newErrors[0]?.message || 'konfliktas'})`).join('\n')}`;
       }
       return result;
     }
