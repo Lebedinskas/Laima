@@ -24,13 +24,12 @@ export function useSupabaseSync() {
         const store = useScheduleStore.getState();
         const { config } = store;
 
-        const [doctors, savedConfig, schedule, changeHistory, snapshots, chatMessages] = await Promise.all([
+        const [doctors, savedConfig, schedule, changeHistory, snapshots] = await Promise.all([
           db.loadDoctors(user.id),
           db.loadMonthConfig(user.id, config.year, config.month),
           db.loadSchedule(user.id, config.year, config.month),
           db.loadChangeHistory(user.id),
           db.loadSnapshots(user.id),
-          db.loadChatMessages(user.id),
         ]);
 
         // Only override if Supabase has data
@@ -69,7 +68,7 @@ export function useSupabaseSync() {
         useScheduleStore.setState({
           ...(changeHistory.length > 0 ? { changeHistory } : {}),
           ...(snapshots.length > 0 ? { monthlySnapshots: snapshots } : {}),
-          ...(chatMessages.length > 0 ? { chatMessages } : {}),
+          // chatMessages intentionally NOT loaded — each session starts fresh
           ...(Object.keys(scheduleCache).length > 0 ? { scheduleCache, yearGenerated: Object.keys(scheduleCache).length > 1 } : {}),
         });
 
@@ -114,7 +113,8 @@ export function useSupabaseSync() {
         ...configSaves,
         db.saveChangeRecords(user.id, state.changeHistory),
         ...state.monthlySnapshots.map(s => db.saveSnapshot(user.id, s)),
-        ...state.chatMessages.slice(-5).map(m => db.saveChatMessage(user.id, m)),
+        // chatMessages not saved — session-only; chatArchive saved for history
+        ...state.chatArchive.slice(-50).map(m => db.saveChatMessage(user.id, m)),
       ]);
     } catch (err) {
       console.error('Failed to save to Supabase:', err);

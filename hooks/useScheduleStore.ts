@@ -494,6 +494,13 @@ export const useScheduleStore = create<ScheduleStore>()(
         rules: state.rules,
         // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
+      version: 2,
+      migrate: (persisted: unknown) => {
+        // Remove chatMessages from old localStorage entries
+        const state = persisted as Record<string, unknown>;
+        const { chatMessages: _, ...rest } = state;
+        return rest;
+      },
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<typeof current>),

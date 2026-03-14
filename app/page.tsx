@@ -101,7 +101,7 @@ export default function Home() {
           </div>
 
           <div className="space-y-4">
-            <div className="h-[600px]">
+            <div className="h-[480px]">
               <ChatPanel />
             </div>
             <div className="bg-white rounded-lg border p-4">

@@ -83,15 +83,14 @@ async function generateScheduleILP(
   rules: ScheduleRule[],
 ): Promise<ScheduleEntry[] | null> {
   // Dynamic import — HiGHS is WASM and must be loaded async
-  let highsLoader;
+  let highs;
   try {
-    highsLoader = (await import('highs')).default;
+    const highsLoader = (await import('highs')).default;
+    highs = await highsLoader();
   } catch {
     console.warn('HiGHS not available, falling back to greedy');
     return null;
   }
-
-  const highs = await highsLoader();
   const { year, month, holidays } = config;
   const shiftDuration = config.shiftDurationHours || DEFAULT_SHIFT_DURATION;
   const maxWeeklyHours = getRuleParam(rules, 'max_weekly_hours', 'hours', config.maxWeeklyHours || DEFAULT_MAX_WEEKLY_HOURS);

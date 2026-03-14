@@ -150,16 +150,16 @@ export function ChatPanel() {
       <ScrollArea className="flex-1 min-h-0 p-4" ref={scrollRef}>
         <div className="space-y-3">
           {chatMessages.length === 0 && (
-            <div className="text-center text-sm text-muted-foreground py-6">
+            <div className="text-center text-sm text-muted-foreground py-3">
               <p className="font-medium text-gray-700">Sveiki! Aš esu Laima.</p>
-              <p className="mt-1 text-gray-500">Padėsiu su budėjimų grafiku.</p>
-              <div className="mt-4 space-y-1.5 text-xs text-center max-w-[260px] mx-auto">
-                <p className="font-medium text-gray-600 text-center mb-2">Ką galiu padaryti:</p>
+              <p className="mt-0.5 text-gray-500 text-xs">Padėsiu su budėjimų grafiku.</p>
+              <div className="mt-3 space-y-1 text-xs text-center max-w-[240px] mx-auto">
+                <p className="font-medium text-gray-600 text-center mb-1.5">Ką galiu padaryti:</p>
                 <div className="bg-gray-50 rounded-md px-3 py-1.5 text-gray-600">
-                  „Tamašauskas negali 15 dieną"
+                  „Gydytojas negali 15 dieną"
                 </div>
                 <div className="bg-gray-50 rounded-md px-3 py-1.5 text-gray-600">
-                  „Sukeisk Deltuvą su Simaičiu"
+                  „Sukeisk budėjimą 10 d."
                 </div>
                 <div className="bg-gray-50 rounded-md px-3 py-1.5 text-gray-600">
                   „Kas gali budėti 20 d. už respubliką?"
