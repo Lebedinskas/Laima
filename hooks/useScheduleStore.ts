@@ -494,6 +494,12 @@ export const useScheduleStore = create<ScheduleStore>()(
         rules: state.rules,
         // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<typeof current>),
+        // Always start with empty chat — ignore any old persisted chatMessages
+        chatMessages: [],
+      }),
     }
   )
 );
