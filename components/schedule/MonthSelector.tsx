@@ -16,9 +16,10 @@ function jsToWeekday(jsDay: number): number {
 type GenerateStatus = 'idle' | 'generating' | 'success' | 'error';
 
 export function MonthSelector() {
-  const { config, setConfig, generate, generateYear, switchMonth, schedule, scheduleCache, yearGenerated } = useScheduleStore();
+  const { config, setConfig, generate, generatePeriod, switchMonth, schedule, scheduleCache, yearGenerated } = useScheduleStore();
   const [status, setStatus] = useState<GenerateStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
+  const [periodMonths, setPeriodMonths] = useState(1);
 
   // Clear success message after 4s
   useEffect(() => {
@@ -65,24 +66,25 @@ export function MonthSelector() {
     }, 30000);
   }, [generate, schedule]);
 
-  const handleGenerateYear = useCallback(() => {
+  const handleGeneratePeriod = useCallback((months: number) => {
     setStatus('generating');
-    setStatusMessage('Generuojami 12 mėnesių...');
+    setStatusMessage(`Generuojami ${months} mėn...`);
 
-    generateYear();
+    generatePeriod(months);
 
     // Poll for completion
     const check = setInterval(() => {
       const current = useScheduleStore.getState();
-      if (current.yearGenerated && Object.keys(current.scheduleCache).length >= 12) {
+      const cachedCount = Object.values(current.scheduleCache).filter(s => s.length > 0).length;
+      if (cachedCount >= months) {
         clearInterval(check);
-        const cachedCount = Object.values(current.scheduleCache).filter(s => s.length > 0).length;
         setStatus('success');
         setStatusMessage(`${cachedCount} mėn. sugeneruota!`);
       }
     }, 500);
 
-    // Timeout after 120s (12 months can take a while)
+    // Timeout scales with month count
+    const timeoutMs = Math.max(30000, months * 15000);
     setTimeout(() => {
       clearInterval(check);
       const current = useScheduleStore.getState();
@@ -94,8 +96,8 @@ export function MonthSelector() {
         setStatus('error');
         setStatusMessage('Generavimas užtruko per ilgai');
       }
-    }, 120000);
-  }, [generateYear]);
+    }, timeoutMs);
+  }, [generatePeriod]);
 
   // Auto-fill LT holidays when holidays array is empty (after year/month change)
   useEffect(() => {
@@ -269,33 +271,32 @@ export function MonthSelector() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Select
+            value={periodMonths.toString()}
+            onValueChange={(v) => v && setPeriodMonths(parseInt(v))}
+          >
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 mėn.</SelectItem>
+              <SelectItem value="3">3 mėn.</SelectItem>
+              <SelectItem value="6">6 mėn.</SelectItem>
+              <SelectItem value="12">12 mėn.</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
-            onClick={handleGenerate}
+            onClick={() => periodMonths === 1 ? handleGenerate() : handleGeneratePeriod(periodMonths)}
             disabled={isGenerating}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {isGenerating ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Generuojama...
+                {statusMessage}
               </span>
             ) : (
               schedule.length > 0 ? 'Pergeneruoti' : 'Generuoti'
-            )}
-          </Button>
-          <Button
-            onClick={handleGenerateYear}
-            disabled={isGenerating}
-            variant="outline"
-            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-          >
-            {isGenerating && statusMessage.includes('12') ? (
-              <span className="flex items-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-                Metams...
-              </span>
-            ) : (
-              'Metams'
             )}
           </Button>
         </div>

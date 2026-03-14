@@ -15,7 +15,8 @@ interface ScheduleStore {
   config: MonthConfig;
   errors: ValidationError[];
   stats: DoctorStats[];
-  chatMessages: ChatMessage[];
+  chatMessages: ChatMessage[];       // current session chat (cleared on login)
+  chatArchive: ChatMessage[];        // full history across sessions
   undoStack: ScheduleEntry[][];
   redoStack: ScheduleEntry[][];
   changeHistory: ChangeRecord[];
@@ -32,6 +33,7 @@ interface ScheduleStore {
   setConfig: (config: MonthConfig) => void;
   generate: () => void;
   generateYear: () => void;
+  generatePeriod: (monthCount: number) => void;
   switchMonth: (year: number, month: number) => void;
   assignDoctor: (day: number, slot: 'republicDoctor' | 'departmentDoctor' | 'residentDoctor', doctorId: string | null, source?: 'manual' | 'chat') => void;
   undo: () => void;
@@ -39,6 +41,7 @@ interface ScheduleStore {
   canUndo: () => boolean;
   canRedo: () => boolean;
   addChatMessage: (message: ChatMessage) => void;
+  clearChatSession: () => void;
   setSchedule: (schedule: ScheduleEntry[]) => void;
   setRules: (rules: ScheduleRule[]) => void;
   updateRule: (id: string, updates: Partial<ScheduleRule>) => void;
@@ -135,6 +138,7 @@ export const useScheduleStore = create<ScheduleStore>()(
       errors: [],
       stats: [],
       chatMessages: [],
+      chatArchive: [],
       undoStack: [],
       redoStack: [],
       changeHistory: [],
@@ -208,13 +212,17 @@ export const useScheduleStore = create<ScheduleStore>()(
       },
 
       generateYear: () => {
+        get().generatePeriod(12);
+      },
+
+      generatePeriod: (monthCount: number) => {
         const { doctors, config, changeHistory: existingHistory, rules } = get();
 
-        // Generate all 12 months with ILP solver (async)
+        // Build list of months to generate
         const months: { year: number; month: number; config: MonthConfig }[] = [];
         let y = config.year;
         let m = config.month;
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < monthCount; i++) {
           const monthConfig = getConfigForMonth(config, y, m);
           months.push({ year: y, month: m, config: monthConfig });
           const next = nextMonth(y, m);
@@ -222,7 +230,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           m = next.month;
         }
 
-        // Run all 12 months in sequence (ILP async)
+        // Run all months in sequence (ILP async)
         (async () => {
           const newCache: Record<string, ScheduleEntry[]> = {};
           const allSnapshots: MonthlySnapshot[] = [];
@@ -266,7 +274,7 @@ export const useScheduleStore = create<ScheduleStore>()(
             scheduleCache: newCache,
             changeHistory: [...keptHistory, ...allGenRecords],
             monthlySnapshots: allSnapshots,
-            yearGenerated: true,
+            yearGenerated: monthCount >= 12,
           });
         })();
       },
@@ -428,7 +436,14 @@ export const useScheduleStore = create<ScheduleStore>()(
       canRedo: () => get().redoStack.length > 0,
 
       addChatMessage: (message) => {
-        set({ chatMessages: [...get().chatMessages, message] });
+        set({
+          chatMessages: [...get().chatMessages, message],
+          chatArchive: [...get().chatArchive, message],
+        });
+      },
+
+      clearChatSession: () => {
+        set({ chatMessages: [] });
       },
 
       setSchedule: (schedule) => {
@@ -471,6 +486,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         schedule: state.schedule,
         config: state.config,
         chatMessages: state.chatMessages,
+        chatArchive: state.chatArchive,
         changeHistory: state.changeHistory,
         monthlySnapshots: state.monthlySnapshots,
         scheduleCache: state.scheduleCache,
