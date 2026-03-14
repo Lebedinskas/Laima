@@ -86,7 +86,9 @@ async function generateScheduleILP(
   let highs;
   try {
     const highsLoader = (await import('highs')).default;
-    highs = await highsLoader();
+    highs = await highsLoader({
+      locateFile: (file: string) => `/wasm/${file}`,
+    });
   } catch {
     console.warn('HiGHS not available, falling back to greedy');
     return null;
