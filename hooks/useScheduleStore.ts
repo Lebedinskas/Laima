@@ -47,6 +47,7 @@ interface ScheduleStore {
   updateRule: (id: string, updates: Partial<ScheduleRule>) => void;
   addRule: (rule: ScheduleRule) => void;
   removeRule: (id: string) => void;
+  resetRules: () => void;
 }
 
 const now = new Date();
@@ -474,9 +475,11 @@ export const useScheduleStore = create<ScheduleStore>()(
       },
 
       removeRule: (id) => {
-        const rule = get().rules.find(r => r.id === id);
-        if (rule?.builtIn) return; // can't delete built-in rules
         set({ rules: get().rules.filter(r => r.id !== id) });
+      },
+
+      resetRules: () => {
+        set({ rules: [...defaultRules] });
       },
     }),
     {

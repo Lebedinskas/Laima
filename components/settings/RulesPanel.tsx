@@ -129,23 +129,21 @@ function RuleCard({ rule }: { rule: ScheduleRule }) {
             <option value="warning">Perspėjimas</option>
           </select>
         </div>
-        {!rule.builtIn && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-            onClick={() => removeRule(rule.id)}
-          >
-            Pašalinti
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+          onClick={() => removeRule(rule.id)}
+        >
+          Pašalinti
+        </Button>
       </div>
     </div>
   );
 }
 
 function AddRuleDialog() {
-  const { addRule } = useScheduleStore();
+  const { addRule, rules, updateRule } = useScheduleStore();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -170,18 +168,31 @@ function AddRuleDialog() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      const rule: ScheduleRule = {
-        id: `custom_${Date.now()}`,
-        name: data.refinedName || text,
-        description: data.refinedDescription || text,
-        type: data.type as RuleType,
-        enabled: true,
-        severity: data.severity || 'warning',
-        params: data.params || {},
-        builtIn: false,
-      };
+      // If a rule with the same type already exists, update it instead of adding duplicate
+      const existingRule = data.type !== 'custom'
+        ? rules.find(r => r.type === data.type)
+        : undefined;
 
-      addRule(rule);
+      if (existingRule) {
+        updateRule(existingRule.id, {
+          params: data.params || existingRule.params,
+          enabled: true,
+          name: data.refinedName || existingRule.name,
+          description: data.refinedDescription || existingRule.description,
+          severity: data.severity || existingRule.severity,
+        });
+      } else {
+        addRule({
+          id: `custom_${Date.now()}`,
+          name: data.refinedName || text,
+          description: data.refinedDescription || text,
+          type: data.type as RuleType,
+          enabled: true,
+          severity: data.severity || 'warning',
+          params: data.params || {},
+          builtIn: false,
+        });
+      }
       setInput('');
       setOpen(false);
     } catch {
@@ -246,7 +257,7 @@ function AddRuleDialog() {
 }
 
 export function RulesPanel() {
-  const { rules } = useScheduleStore();
+  const { rules, resetRules } = useScheduleStore();
 
   const builtInRules = rules.filter(r => r.builtIn);
   const customRules = rules.filter(r => !r.builtIn);
@@ -261,22 +272,33 @@ export function RulesPanel() {
             {enabledCount} iš {rules.length} aktyvios
           </p>
         </div>
-        <AddRuleDialog />
-      </div>
-
-      {/* Built-in rules */}
-      <div>
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-          Sisteminės taisyklės
-        </h4>
-        <div className="space-y-2">
-          {builtInRules.map(rule => (
-            <RuleCard key={rule.id} rule={rule} />
-          ))}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-gray-700"
+            onClick={resetRules}
+          >
+            Atkurti numatytas
+          </Button>
+          <AddRuleDialog />
         </div>
       </div>
 
-      {/* Custom rules */}
+      {/* All rules */}
+      {builtInRules.length > 0 && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Sisteminės taisyklės
+          </h4>
+          <div className="space-y-2">
+            {builtInRules.map(rule => (
+              <RuleCard key={rule.id} rule={rule} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {customRules.length > 0 && (
         <div>
           <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -290,7 +312,13 @@ export function RulesPanel() {
         </div>
       )}
 
-      {customRules.length === 0 && (
+      {rules.length === 0 && (
+        <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
+          Nėra taisyklių. Spauskite „Atkurti numatytas" arba pridėkite naują.
+        </div>
+      )}
+
+      {rules.length > 0 && customRules.length === 0 && (
         <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
           Galite pridėti savo taisykles arba paprašyti Laimos per chat
         </div>
