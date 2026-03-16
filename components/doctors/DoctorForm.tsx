@@ -30,6 +30,24 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
   const [polyclinic, setPolyclinic] = useState<PolyclinicSlot[]>(doctor?.polyclinicSchedule || []);
   const [unavailable, setUnavailable] = useState(doctor?.unavailableDates.join(', ') || '');
   const [preferences, setPreferences] = useState(doctor?.preferences || '');
+  // null = gali budėti bet kurią dieną; array = tik šios savaitės dienos
+  const [allowedDays, setAllowedDays] = useState<number[] | null>(
+    doctor?.allowedWeekdays ?? null
+  );
+
+  const toggleAllowedDay = (weekday: number) => {
+    if (allowedDays === null) {
+      // Pereiname prie apriboto režimo — atžymime tik šią dieną
+      setAllowedDays([0, 1, 2, 3, 4, 5, 6].filter(d => d !== weekday));
+    } else if (allowedDays.includes(weekday)) {
+      const next = allowedDays.filter(d => d !== weekday);
+      setAllowedDays(next.length === 0 ? [weekday] : next); // neleidžiame išjungti visų
+    } else {
+      const next = [...allowedDays, weekday].sort();
+      // Jei visi 7 dienų pažymėti — grąžiname į null (be apribojimų)
+      setAllowedDays(next.length === 7 ? null : next);
+    }
+  };
 
   // New polyclinic slot form
   const [newPolyDay, setNewPolyDay] = useState('0');
@@ -45,6 +63,7 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
       maxRepublicPerMonth: maxRepublic ? parseInt(maxRepublic) : null,
       maxDepartmentPerMonth: maxDepartment ? parseInt(maxDepartment) : null,
       maxTotalPerMonth: maxTotal ? parseInt(maxTotal) : null,
+      allowedWeekdays: allowedDays,
       polyclinicSchedule: polyclinic,
       unavailableDates: unavailable
         .split(',')
@@ -143,6 +162,39 @@ export function DoctorForm({ doctor, onClose }: DoctorFormProps) {
                 placeholder="∞"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Leidžiamos budėjimo savaitės dienos
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {allowedDays === null ? '(visos dienos)' : `tik: ${allowedDays.map(d => WEEKDAY_NAMES_FULL[d]).join(', ')}`}
+              </span>
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {WEEKDAY_NAMES_FULL.map((dayName, i) => {
+                const checked = allowedDays === null || allowedDays.includes(i);
+                return (
+                  <label key={i} className="flex items-center gap-1 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAllowedDay(i)}
+                    />
+                    <span className={checked ? '' : 'text-muted-foreground line-through'}>{dayName}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {allowedDays !== null && (
+              <button
+                type="button"
+                className="text-xs text-blue-600 underline"
+                onClick={() => setAllowedDays(null)}
+              >
+                Atstatyti (visos dienos)
+              </button>
+            )}
           </div>
 
           <div className="space-y-2">

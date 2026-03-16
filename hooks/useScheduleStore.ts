@@ -63,6 +63,20 @@ function createChangeId(): string {
   return `ch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Apskaičiuoja kiek kartų mama rankiniu būdu pasirinko kiekvieną gydytoją klinikos stulpeliui.
+ * Naudojama mokymosi mechanizme — labiau pageidaujami gydytojai gauna prioritetą generuojant.
+ */
+function buildClinicHistory(changeHistory: ChangeRecord[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of changeHistory) {
+    if (r.slot === 'clinicDoctor' && r.source === 'manual' && r.newDoctorId) {
+      counts[r.newDoctorId] = (counts[r.newDoctorId] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function monthKey(year: number, month: number): string {
   return `${year}-${month}`;
 }
@@ -171,7 +185,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         const { doctors, config, changeHistory, scheduleCache, rules } = get();
 
         // Use async ILP solver, update state when done
-        generateScheduleAsync(doctors, config, rules).then(schedule => {
+        generateScheduleAsync(doctors, config, rules, buildClinicHistory(changeHistory)).then(schedule => {
           const currentState = get();
           // Check config hasn't changed while solving
           if (currentState.config.year !== config.year || currentState.config.month !== config.month) return;
@@ -240,7 +254,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           let allGenRecords: ChangeRecord[] = [];
 
           for (const mo of months) {
-            const schedule = await generateScheduleAsync(doctors, mo.config, rules);
+            const schedule = await generateScheduleAsync(doctors, mo.config, rules, buildClinicHistory(existingHistory));
             const stats = calculateStats(schedule, doctors, mo.config);
 
             newCache[monthKey(mo.year, mo.month)] = schedule;
@@ -503,7 +517,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         rules: state.rules,
         // Note: undoStack/redoStack intentionally NOT persisted — session-only
       }),
-      version: 4,
+      version: 5,
       migrate: (persisted: unknown) => {
         const state = persisted as Record<string, unknown>;
         // v1→v2: Remove chatMessages from old localStorage entries
@@ -529,11 +543,11 @@ export const useScheduleStore = create<ScheduleStore>()(
           }
         }
         // v3→v4: Add role field to doctors
+        // v4→v5: Add allowedWeekdays field (null = nėra apribojimų)
         if (Array.isArray(rest.doctors)) {
           for (const doc of rest.doctors as Record<string, unknown>[]) {
-            if (!doc.role) {
-              doc.role = 'doctor';
-            }
+            if (!doc.role) doc.role = 'doctor';
+            if (doc.allowedWeekdays === undefined) doc.allowedWeekdays = null;
           }
         }
         return rest;

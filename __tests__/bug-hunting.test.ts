@@ -333,14 +333,15 @@ describe('ISO week boundaries', () => {
 // ===== clinicDoctor consistency =====
 
 describe('clinicDoctor field correctness', () => {
-  it('clinicDoctor matches republicDoctor on workdays', () => {
+  it('clinicDoctor is assigned on workdays (independent rotation)', () => {
     const doctors = makeDoctors(8);
     const config = makeConfig({ holidays: [1, 15] });
     const schedule = generateSchedule(doctors, config, allRulesEnabled());
 
     for (const entry of schedule) {
       if (!entry.isWeekend && !entry.isHoliday) {
-        expect(entry.clinicDoctor).toBe(entry.republicDoctor);
+        // clinicDoctor yra atskira sąžininga rotacija — visada priskirtas darbo dienomis
+        expect(entry.clinicDoctor).not.toBeNull();
       }
     }
   });

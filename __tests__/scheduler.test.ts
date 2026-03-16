@@ -144,7 +144,8 @@ describe('generateSchedule (greedy)', () => {
 
     for (const entry of schedule) {
       if (!entry.isWeekend && !entry.isHoliday) {
-        expect(entry.clinicDoctor).toBe(entry.republicDoctor);
+        // clinicDoctor yra atskira rotacija — priskirtas, bet nebūtinai = republicDoctor
+        expect(entry.clinicDoctor).not.toBeNull();
       } else {
         expect(entry.clinicDoctor).toBeNull();
       }

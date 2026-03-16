@@ -17,6 +17,10 @@ export interface Doctor {
   maxRepublicPerMonth: number | null;
   maxDepartmentPerMonth: number | null;
   maxTotalPerMonth: number | null;
+  // Jei nustatyta — gydytojas gali budėti TIK šiomis savaitės dienomis (0=Pr..6=Sk)
+  // pvz. TamašauskasA: [3] (tik ketvirtadieniais), Deltuva: [1,2] (tik antr-treč)
+  // null arba undefined = apribojimų nėra
+  allowedWeekdays?: number[] | null;
   polyclinicSchedule: PolyclinicSlot[];
   unavailableDates: string[]; // ISO dates
   preferences: string;
@@ -73,7 +77,7 @@ export interface ChangeRecord {
   year: number;
   month: number;
   day: number;
-  slot: 'republicDoctor' | 'departmentDoctor' | 'residentDoctor';
+  slot: 'clinicDoctor' | 'republicDoctor' | 'departmentDoctor' | 'residentDoctor';
   previousDoctorId: string | null;
   newDoctorId: string | null;
   previousDoctorName: string | null;

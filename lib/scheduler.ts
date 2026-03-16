@@ -129,6 +129,9 @@ async function generateScheduleILP(
           if (s === 1 && !doc.canDepartment) ok = false;
         }
 
+        // Allowed weekdays restriction (pvz. TamašauskasA tik ketvirtadieniais)
+        if (doc.allowedWeekdays && !doc.allowedWeekdays.includes(info.weekday)) ok = false;
+
         // Unavailable dates
         if (checkUnavailable && isUnavailable(doc, info.dateStr)) ok = false;
 
@@ -439,14 +442,13 @@ async function generateScheduleILP(
         }
       }
 
-      const isWorkday = !info.isWeekend && !info.isHoliday;
       schedule.push({
         day: info.day,
         date: info.dateStr,
         weekday: info.weekday,
         isWeekend: info.isWeekend,
         isHoliday: info.isHoliday,
-        clinicDoctor: isWorkday && republicId ? republicId : null,
+        clinicDoctor: null,
         republicDoctor: republicId,
         departmentDoctor: departmentId,
         residentDoctor: null,
@@ -515,6 +517,8 @@ function generateScheduleGreedy(
         if (slot === 'republic' && !doc.canRepublic) return false;
         if (slot === 'department' && !doc.canDepartment) return false;
       }
+      // Allowed weekdays restriction (pvz. TamašauskasA tik ketvirtadieniais)
+      if (doc.allowedWeekdays && !doc.allowedWeekdays.includes(weekday)) return false;
       if (checkUnavailable && isUnavailable(doc, dateStr)) return false;
       if (checkPolySameDay && hasPolyclinic(doc, weekday)) return false;
       if (checkPolyPrevDay && day < daysInMonth && hasPolyclinic(doc, nextWeekday)) return false;
@@ -581,14 +585,13 @@ function generateScheduleGreedy(
       if (isWeekend || isHoliday) st.weekendCount++;
     }
 
-    const isWorkday = !isWeekend && !isHoliday;
     schedule.push({
       day,
       date: dateStr,
       weekday,
       isWeekend,
       isHoliday,
-      clinicDoctor: isWorkday && chosenR ? chosenR.id : null,
+      clinicDoctor: null,
       republicDoctor: chosenR?.id || null,
       departmentDoctor: chosenD?.id || null,
       residentDoctor: null,
@@ -596,6 +599,94 @@ function generateScheduleGreedy(
   }
 
   return schedule;
+}
+
+// ===== Clinic Doctor Assignment (post-processing) =====
+// Col1 (Skubiosios medicinos klinika 8-16) is a regular work day, not a budėjimas.
+// It is distributed fairly across all doctors, independent of col2/col3.
+// Preference: doctor already on duty today (col2 first, then col3), if they have the fewest clinic shifts.
+// Constraint: doctor who just finished duty (was col2/col3 yesterday) cannot do clinic today.
+
+// clinicHistory: Record<doctorId, count> — kiek kartų mama rankiniu būdu pasirinko šį gydytoją
+// klinikos stulpeliui. Mokymosi mechanizmas: labiau pageidaujami gydytojai gauna "kreditą",
+// kuris sumažina jų efektyvų klinikos kiekį ir padidina tikimybę būti parinktam.
+function assignClinicDoctors(
+  schedule: ScheduleEntry[],
+  doctors: Doctor[],
+  clinicHistory: Record<string, number> = {},
+): ScheduleEntry[] {
+  const clinicCounts: Record<string, number> = {};
+  for (const doc of doctors) clinicCounts[doc.id] = 0;
+
+  // Gydytojai, kurie nėra klinikoje (konsultantai su ≤3 budėjimais/mėn.):
+  // riboti R-only gydytojai nedalyvauja atskiroje klinikos rotacijoje.
+  // Jie gali patekti į col1 tik kai jie TAIP PAT yra col2 tą dieną (natūraliai).
+  const isLimitedConsultant = (doc: Doctor): boolean =>
+    doc.canRepublic && !doc.canDepartment &&
+    doc.maxRepublicPerMonth !== null && doc.maxRepublicPerMonth <= 3;
+
+  // Kiekvienai dienai sekame, kas baigė budėjimą tą rytą (= col2+col3 iš dienos X-1).
+  // Gydytojas, ką tik baigęs 24h budėjimą, negali iš karto eiti į kliniką 8-16.
+  const finishedDutyOn: Record<number, Set<string>> = {};
+  for (const entry of schedule) {
+    const nextDay = entry.day + 1;
+    if (!finishedDutyOn[nextDay]) finishedDutyOn[nextDay] = new Set();
+    if (entry.republicDoctor) finishedDutyOn[nextDay].add(entry.republicDoctor);
+    if (entry.departmentDoctor) finishedDutyOn[nextDay].add(entry.departmentDoctor);
+  }
+
+  // Mokymosi svoris: kiek "kreditų" suteikia vienas mamos rankinis pasirinkimas.
+  // 0.5 reiškia: mama 2x pasirinkusi gydytoją X → jo efektyvus kiekis sumažėja 1 vienetu.
+  const LEARN_WEIGHT = 0.5;
+
+  return schedule.map(entry => {
+    const isWorkday = !entry.isWeekend && !entry.isHoliday;
+    if (!isWorkday) return { ...entry, clinicDoctor: null };
+
+    const justFinished = finishedDutyOn[entry.day] || new Set<string>();
+
+    const eligible = doctors.filter(doc => {
+      // Rezidentai nekrypta klinikoje
+      if (doc.role === 'resident') return false;
+      // Riboti konsultantai gali patekti į col1 TIK kaip col2 (jie jau ten)
+      if (isLimitedConsultant(doc) && doc.id !== entry.republicDoctor) return false;
+      // Ką tik baigė budėjimą — negali iš karto į kliniką
+      if (justFinished.has(doc.id)) return false;
+      // Nedarbingas
+      if (doc.unavailableDates.includes(entry.date)) return false;
+      // Poliklinika tą dieną
+      if (doc.polyclinicSchedule.some(s => s.weekday === entry.weekday)) return false;
+      // allowedWeekdays apribojimas (taikomas ir klinikai)
+      if (doc.allowedWeekdays && !doc.allowedWeekdays.includes(entry.weekday)) return false;
+      return true;
+    });
+
+    if (eligible.length === 0) {
+      // Atsarginis variantas — respublikos gydytojas
+      return { ...entry, clinicDoctor: entry.republicDoctor };
+    }
+
+    eligible.sort((a, b) => {
+      // Efektyvus kiekis = faktinis klinikos kiekis − mamos pageidavimų kreditas
+      const ea = clinicCounts[a.id] - (clinicHistory[a.id] || 0) * LEARN_WEIGHT;
+      const eb = clinicCounts[b.id] - (clinicHistory[b.id] || 0) * LEARN_WEIGHT;
+      if (Math.abs(ea - eb) > 0.01) return ea - eb;
+      // Lygybė: pirmenybė gydytojui jau budinčiam šią dieną (col2, tada col3)
+      const aIsR = a.id === entry.republicDoctor;
+      const bIsR = b.id === entry.republicDoctor;
+      if (aIsR && !bIsR) return -1;
+      if (!aIsR && bIsR) return 1;
+      const aIsD = a.id === entry.departmentDoctor;
+      const bIsD = b.id === entry.departmentDoctor;
+      if (aIsD && !bIsD) return -1;
+      if (!aIsD && bIsD) return 1;
+      return 0;
+    });
+
+    const chosen = eligible[0];
+    clinicCounts[chosen.id]++;
+    return { ...entry, clinicDoctor: chosen.id };
+  });
 }
 
 // ===== Public API =====
@@ -607,12 +698,13 @@ function generateScheduleGreedy(
 export function generateSchedule(
   doctors: Doctor[],
   config: MonthConfig,
-  rules?: ScheduleRule[]
+  rules?: ScheduleRule[],
+  clinicHistory?: Record<string, number>,
 ): ScheduleEntry[] {
-  // Synchronous wrapper — tries ILP first, falls back to greedy
-  // Since HiGHS needs async init, we can't use it synchronously here.
+  // Synchronous wrapper — greedy only (ILP requires async).
   // The async version is preferred — use generateScheduleAsync when possible.
-  return generateScheduleGreedy(doctors, config, rules || []);
+  const raw = generateScheduleGreedy(doctors, config, rules || []);
+  return assignClinicDoctors(raw, doctors, clinicHistory || {});
 }
 
 /**
@@ -622,14 +714,15 @@ export function generateSchedule(
 export async function generateScheduleAsync(
   doctors: Doctor[],
   config: MonthConfig,
-  rules?: ScheduleRule[]
+  rules?: ScheduleRule[],
+  // clinicHistory: kiek kartų mama rankiniu būdu pasirinko kiekvieną gydytoją klinikos stulpeliui.
+  // Naudojama mokymosi mechanizme — labiau pageidaujami gydytojai gauna prioritetą.
+  clinicHistory?: Record<string, number>,
 ): Promise<ScheduleEntry[]> {
   const activeRules = rules || [];
 
-  // Try ILP first
   const ilpResult = await generateScheduleILP(doctors, config, activeRules);
-  if (ilpResult) return ilpResult;
+  const raw = ilpResult ?? generateScheduleGreedy(doctors, config, activeRules);
 
-  // Fallback to greedy
-  return generateScheduleGreedy(doctors, config, activeRules);
+  return assignClinicDoctors(raw, doctors, clinicHistory || {});
 }
