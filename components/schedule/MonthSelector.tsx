@@ -37,13 +37,15 @@ export function MonthSelector() {
     setStatus('generating');
     setStatusMessage('Generuojamas grafikas...');
 
-    const prevLength = schedule.length;
     generate();
 
+    let done = false;
     // Poll for completion (generate is async internally)
     const check = setInterval(() => {
+      if (done) return;
       const current = useScheduleStore.getState();
       if (current.schedule.length > 0 && current.schedule !== schedule) {
+        done = true;
         clearInterval(check);
         const errors = current.errors.filter(e => e.type === 'error');
         if (errors.length > 0) {
@@ -56,14 +58,14 @@ export function MonthSelector() {
       }
     }, 200);
 
-    // Timeout after 30s
+    // Timeout after 60s
     setTimeout(() => {
+      if (done) return;
+      done = true;
       clearInterval(check);
-      if (useScheduleStore.getState().schedule.length === prevLength) {
-        setStatus('error');
-        setStatusMessage('Generavimas užtruko per ilgai');
-      }
-    }, 30000);
+      setStatus('error');
+      setStatusMessage('Generavimas užtruko per ilgai');
+    }, 60000);
   }, [generate, schedule]);
 
   const handleGeneratePeriod = useCallback((months: number) => {

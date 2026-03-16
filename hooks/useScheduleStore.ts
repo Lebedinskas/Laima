@@ -3,6 +3,30 @@ import { persist } from 'zustand/middleware';
 import { Doctor, MonthConfig, ScheduleEntry, ValidationError, ChatMessage, DoctorStats, ChangeRecord, MonthlySnapshot, ScheduleRule } from '@/lib/types';
 import { generateSchedule, generateScheduleAsync } from '@/lib/scheduler';
 import { validateSchedule, calculateStats } from '@/lib/validator';
+
+// Server-side ILP generation via API route — precise algorithm, no browser limits.
+// Falls back to client-side greedy if server unreachable.
+async function generateViaServer(
+  doctors: Doctor[],
+  config: MonthConfig,
+  rules: ScheduleRule[],
+  clinicHistory: Record<string, number>,
+): Promise<{ schedule: ScheduleEntry[]; usedFallback: boolean }> {
+  try {
+    const res = await fetch('/api/schedule/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doctors, config, rules, clinicHistory }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { schedule } = await res.json();
+    return { schedule: schedule as ScheduleEntry[], usedFallback: false };
+  } catch (err) {
+    console.warn('Server ILP unavailable, falling back to greedy:', err);
+    const schedule = await generateScheduleAsync(doctors, config, rules, clinicHistory);
+    return { schedule, usedFallback: true };
+  }
+}
 import { swapDoctor } from '@/lib/operations';
 import { defaultDoctors } from '@/data/default-doctors';
 import { defaultRules } from '@/lib/default-rules';
@@ -185,10 +209,14 @@ export const useScheduleStore = create<ScheduleStore>()(
         const { doctors, config, changeHistory, scheduleCache, rules } = get();
 
         // Use async ILP solver, update state when done
-        generateScheduleAsync(doctors, config, rules, buildClinicHistory(changeHistory)).then(schedule => {
+        generateViaServer(doctors, config, rules, buildClinicHistory(changeHistory)).then(({ schedule, usedFallback }) => {
           const currentState = get();
           // Check config hasn't changed while solving
           if (currentState.config.year !== config.year || currentState.config.month !== config.month) return;
+
+          if (usedFallback) {
+            console.warn('⚠️ Grafikas sugeneruotas atsarginiu algoritmu (greedy) — serveris nepasiekiamas');
+          }
 
           const errors = validateSchedule(schedule, doctors, config, rules);
           const stats = calculateStats(schedule, doctors, config);
@@ -253,8 +281,10 @@ export const useScheduleStore = create<ScheduleStore>()(
           const allSnapshots: MonthlySnapshot[] = [];
           let allGenRecords: ChangeRecord[] = [];
 
+          let anyFallback = false;
           for (const mo of months) {
-            const schedule = await generateScheduleAsync(doctors, mo.config, rules, buildClinicHistory(existingHistory));
+            const { schedule, usedFallback } = await generateViaServer(doctors, mo.config, rules, buildClinicHistory(existingHistory));
+            if (usedFallback) anyFallback = true;
             const stats = calculateStats(schedule, doctors, mo.config);
 
             newCache[monthKey(mo.year, mo.month)] = schedule;
@@ -280,6 +310,10 @@ export const useScheduleStore = create<ScheduleStore>()(
           const keptHistory = existingHistory.filter(
             r => !generatedMonths.has(monthKey(r.year, r.month))
           );
+
+          if (anyFallback) {
+            console.warn('⚠️ Kai kurie mėnesiai sugeneruoti atsarginiu algoritmu (greedy) — serveris buvo nepasiekiamas');
+          }
 
           set({
             schedule: currentSchedule,

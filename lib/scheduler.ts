@@ -86,9 +86,19 @@ async function generateScheduleILP(
   let highs;
   try {
     const highsLoader = (await import('highs')).default;
-    highs = await highsLoader({
-      locateFile: (file: string) => `/wasm/${file}`,
-    });
+    if (typeof window === 'undefined') {
+      // Server-side (API route): load WASM directly from node_modules
+      const nodePath = await import('path');
+      highs = await highsLoader({
+        locateFile: (file: string) =>
+          nodePath.join(process.cwd(), 'node_modules', 'highs', 'build', file),
+      });
+    } else {
+      // Client-side: load WASM from /public/wasm/
+      highs = await highsLoader({
+        locateFile: (file: string) => `/wasm/${file}`,
+      });
+    }
   } catch {
     console.warn('HiGHS not available, falling back to greedy');
     return null;
@@ -411,8 +421,8 @@ async function generateScheduleILP(
   // Solve
   try {
     const solution = highs.solve(lpProblem, {
-      time_limit: 10,
-      mip_rel_gap: 0.01,
+      time_limit: 45,
+      mip_rel_gap: 0.02,
       // Note: do NOT set output_flag: false — HiGHS 1.8.0 bug causes
       // "Unable to parse solution" when output is suppressed for MIP problems
     });
@@ -648,8 +658,10 @@ function assignClinicDoctors(
     const eligible = doctors.filter(doc => {
       // Rezidentai nekrypta klinikoje
       if (doc.role === 'resident') return false;
-      // Riboti konsultantai gali patekti į col1 TIK kaip col2 (jie jau ten)
-      if (isLimitedConsultant(doc) && doc.id !== entry.republicDoctor) return false;
+      // Tos dienos budintys gydytojai (col2/col3) negali būti klinikoje tą pačią dieną
+      if (doc.id === entry.republicDoctor || doc.id === entry.departmentDoctor) return false;
+      // Riboti konsultantai (R-only, max≤3) nedalyvauja klinikos rotacijoje
+      if (isLimitedConsultant(doc)) return false;
       // Ką tik baigė budėjimą — negali iš karto į kliniką
       if (justFinished.has(doc.id)) return false;
       // Nedarbingas
@@ -671,15 +683,6 @@ function assignClinicDoctors(
       const ea = clinicCounts[a.id] - (clinicHistory[a.id] || 0) * LEARN_WEIGHT;
       const eb = clinicCounts[b.id] - (clinicHistory[b.id] || 0) * LEARN_WEIGHT;
       if (Math.abs(ea - eb) > 0.01) return ea - eb;
-      // Lygybė: pirmenybė gydytojui jau budinčiam šią dieną (col2, tada col3)
-      const aIsR = a.id === entry.republicDoctor;
-      const bIsR = b.id === entry.republicDoctor;
-      if (aIsR && !bIsR) return -1;
-      if (!aIsR && bIsR) return 1;
-      const aIsD = a.id === entry.departmentDoctor;
-      const bIsD = b.id === entry.departmentDoctor;
-      if (aIsD && !bIsD) return -1;
-      if (!aIsD && bIsD) return 1;
       return 0;
     });
 

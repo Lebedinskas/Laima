@@ -50,9 +50,20 @@ export function useSupabaseSync() {
         }
 
         // Load schedules from snapshots (they tell us which months have data)
+        // Only load months within relevant window: 1 month back to 12 months ahead
+        const now = new Date();
+        const minYear = now.getFullYear(), minMonth = now.getMonth(); // 1 month back
+        const maxDate = new Date(now.getFullYear(), now.getMonth() + 13, 1);
+        const isRelevantMonth = (y: number, m: number) => {
+          const d = new Date(y, m - 1, 1);
+          const min = new Date(minYear, minMonth - 1, 1);
+          return d >= min && d < maxDate;
+        };
+
         if (snapshots.length > 0) {
           const otherMonths = snapshots.filter(
             s => !(s.year === config.year && s.month === config.month)
+                 && isRelevantMonth(s.year, s.month)
           );
           const otherSchedules = await Promise.all(
             otherMonths.map(s => db.loadSchedule(user.id, s.year, s.month).then(entries => ({

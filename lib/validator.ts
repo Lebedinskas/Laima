@@ -110,17 +110,8 @@ export function validateSchedule(
   const daysInMonth = new Date(config.year, config.month, 0).getDate();
 
   for (const entry of schedule) {
-    // clinicDoctor consistency check (workdays: clinicDoctor should match republicDoctor)
     const isWorkday = !entry.isWeekend && !entry.isHoliday;
-    if (isWorkday && entry.republicDoctor && entry.clinicDoctor && entry.clinicDoctor !== entry.republicDoctor) {
-      const repDoc = doctorMap.get(entry.republicDoctor);
-      const clinDoc = doctorMap.get(entry.clinicDoctor);
-      errors.push({
-        type: 'warning',
-        message: `${entry.day} d.: klinikos gydytojas (${clinDoc?.name}) nesutampa su respublikos gydytoju (${repDoc?.name})`,
-        day: entry.day,
-      });
-    }
+    // clinicDoctor is now an independent rotation — no check against republicDoctor needed
 
     // same doctor in both slots
     if (entry.republicDoctor && entry.departmentDoctor && entry.republicDoctor === entry.departmentDoctor) {

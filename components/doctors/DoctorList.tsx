@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useScheduleStore } from '@/hooks/useScheduleStore';
+import { defaultDoctors } from '@/data/default-doctors';
 import { Doctor } from '@/lib/types';
 import { WEEKDAY_NAMES_SHORT } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -9,17 +10,34 @@ import { Badge } from '@/components/ui/badge';
 import { DoctorForm } from './DoctorForm';
 
 export function DoctorList() {
-  const { doctors, removeDoctor } = useScheduleStore();
+  const { doctors, removeDoctor, setDoctors } = useScheduleStore();
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const handleReset = () => {
+    if (!confirmReset) { setConfirmReset(true); return; }
+    setDoctors(defaultDoctors);
+    setConfirmReset(false);
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Gydytojai ({doctors.length})</h2>
-        <Button size="sm" onClick={() => setShowNewForm(true)}>
-          + Pridėti
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={confirmReset ? 'destructive' : 'outline'}
+            onClick={handleReset}
+            onBlur={() => setConfirmReset(false)}
+          >
+            {confirmReset ? 'Patvirtinti atstatymą?' : 'Atstatyti numatytuosius'}
+          </Button>
+          <Button size="sm" onClick={() => setShowNewForm(true)}>
+            + Pridėti
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
