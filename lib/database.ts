@@ -22,6 +22,7 @@ export async function loadDoctors(userId: string): Promise<Doctor[]> {
   return (data || []).map(row => ({
     id: row.id,
     name: row.name,
+    role: (row.role ?? 'doctor') as Doctor['role'],
     canRepublic: row.can_republic,
     canDepartment: row.can_department,
     maxRepublicPerMonth: row.max_republic_per_month,
@@ -30,6 +31,7 @@ export async function loadDoctors(userId: string): Promise<Doctor[]> {
     polyclinicSchedule: row.polyclinic_schedule as Doctor['polyclinicSchedule'],
     unavailableDates: row.unavailable_dates as string[],
     preferences: row.preferences,
+    allowedWeekdays: row.allowed_weekdays ?? null,
   }));
 }
 
@@ -39,6 +41,7 @@ export async function saveDoctors(userId: string, doctors: Doctor[]) {
     id: d.id,
     user_id: userId,
     name: d.name,
+    role: d.role ?? 'doctor',
     can_republic: d.canRepublic,
     can_department: d.canDepartment,
     max_republic_per_month: d.maxRepublicPerMonth,
@@ -47,6 +50,7 @@ export async function saveDoctors(userId: string, doctors: Doctor[]) {
     polyclinic_schedule: d.polyclinicSchedule,
     unavailable_dates: d.unavailableDates,
     preferences: d.preferences,
+    allowed_weekdays: d.allowedWeekdays ?? null,
     updated_at: new Date().toISOString(),
   }));
 
