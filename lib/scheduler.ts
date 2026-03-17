@@ -313,42 +313,21 @@ async function generateScheduleILP(
   }
 
   // ===== OBJECTIVE: minimize unfairness =====
-  // We use auxiliary variable `total_d` for each doctor = total shifts
-  // Then minimize the maximum (via a minimax variable M)
-  // But LP format doesn't support minimax natively.
-  // Instead: minimize sum of squared imbalance penalties approximated by
-  // penalizing deviation from average.
-  //
-  // Simpler approach: minimize weighted sum where:
-  //   - Each shift has base cost = doctor's current total (linearized penalty)
-  //   - Weekend shifts have extra penalty for balance
-  //   - Dept-only doctors get bonus for dept slots
+  // Minimax + maximin approach:
+  //   M  >= total_d for each d  (minimize max load)
+  //   m  <= total_d for each d  (maximize min load)
+  //   Mw >= weekend_total_d     (minimize max weekend shifts)
+  //   Mf >= friday_total_d      (minimize max Friday shifts)
+  //   Mrd >= |R_d - D_d| for dual-eligible doctors (balance R/D)
 
-  // Compute ideal average shifts per doctor
-  const totalSlots = T * SLOTS; // total assignments needed
-  const avgShifts = totalSlots / D;
-
-  // Build objective: for each variable, cost = how much this assignment
-  // increases imbalance. We approximate by giving progressive cost.
-  // Variable cost(d,t,s) = (current_load_estimate + 1) for doctor d
-  // Since we don't know load in advance, use counting auxiliary vars.
-  //
-  // Better approach: use auxiliary variables for per-doctor totals
-  // and minimize sum of (total_d - avg)^2 via linearization.
-  //
-  // Simplest effective approach: minimize max load (minimax)
-  // M >= total_d for all d, minimize M
-  // This guarantees the most balanced possible distribution.
-
-  // Auxiliary: total_d = sum of all x[d][t][s]
-  // M >= total_d for each d
-  // Minimize: M (with small tie-breaking weights for weekend fairness)
-
-  // Add M variable (continuous, 0..infinity)
-  // Add total_d constraints
-
-  // Minimax constraints: M >= sum(x[d][*][*]) for each d
+  // Filter to only non-resident doctors for objective balancing
+  const nonResidentIndices: number[] = [];
   for (let d = 0; d < D; d++) {
+    if (doctors[d].role !== 'resident') nonResidentIndices.push(d);
+  }
+
+  // Minimax constraints: M >= total_d for each non-resident doctor
+  for (const d of nonResidentIndices) {
     const terms: string[] = [];
     for (let t = 0; t < T; t++) {
       for (let s = 0; s < SLOTS; s++) {
@@ -356,15 +335,27 @@ async function generateScheduleILP(
       }
     }
     if (terms.length > 0) {
-      // M - sum(x_d_*_*) >= 0
       constraintLines.push(`  c${cIdx++}: M - ${terms.join(' - ')} >= 0`);
     }
   }
 
-  // Weekend fairness: Mw >= weekend_total_d for each d
+  // Maximin constraints: m <= total_d for each non-resident doctor
+  for (const d of nonResidentIndices) {
+    const terms: string[] = [];
+    for (let t = 0; t < T; t++) {
+      for (let s = 0; s < SLOTS; s++) {
+        if (feasible[d][t][s]) terms.push(varName(d, t, s));
+      }
+    }
+    if (terms.length > 0) {
+      constraintLines.push(`  c${cIdx++}: m - ${terms.join(' - ')} <= 0`);
+    }
+  }
+
+  // Weekend fairness: Mw >= weekend_total_d for each non-resident
   const weekendDayIndices = days.map((info, t) => (info.isWeekend || info.isHoliday) ? t : -1).filter(t => t >= 0);
   if (weekendDayIndices.length > 0) {
-    for (let d = 0; d < D; d++) {
+    for (const d of nonResidentIndices) {
       const terms: string[] = [];
       for (const t of weekendDayIndices) {
         for (let s = 0; s < SLOTS; s++) {
@@ -377,9 +368,40 @@ async function generateScheduleILP(
     }
   }
 
-  // Objective: minimize M * 100 + Mw * 50 (balance total first, then weekends)
-  // Add small per-variable costs for dept-only priority
-  const objTerms: string[] = ['100 M', '50 Mw'];
+  // Friday fairness: Mf >= friday_total_d for each non-resident
+  const fridayDayIndices = days.map((info, t) => info.weekday === 4 ? t : -1).filter(t => t >= 0);
+  if (fridayDayIndices.length > 0) {
+    for (const d of nonResidentIndices) {
+      const terms: string[] = [];
+      for (const t of fridayDayIndices) {
+        for (let s = 0; s < SLOTS; s++) {
+          if (feasible[d][t][s]) terms.push(varName(d, t, s));
+        }
+      }
+      if (terms.length > 0) {
+        constraintLines.push(`  c${cIdx++}: Mf - ${terms.join(' - ')} >= 0`);
+      }
+    }
+  }
+
+  // R/D balance for dual-eligible doctors: Mrd >= |R_count - D_count|
+  const dualEligible = nonResidentIndices.filter(d => doctors[d].canRepublic && doctors[d].canDepartment);
+  for (const d of dualEligible) {
+    const rTerms: string[] = [];
+    const dTerms: string[] = [];
+    for (let t = 0; t < T; t++) {
+      if (feasible[d][t][0]) rTerms.push(varName(d, t, 0));
+      if (feasible[d][t][1]) dTerms.push(varName(d, t, 1));
+    }
+    if (rTerms.length > 0 && dTerms.length > 0) {
+      // Mrd >= R - D and Mrd >= D - R (absolute value linearization)
+      constraintLines.push(`  c${cIdx++}: Mrd - ${rTerms.join(' - ')} + ${dTerms.join(' + ')} >= 0`);
+      constraintLines.push(`  c${cIdx++}: Mrd + ${rTerms.join(' + ')} - ${dTerms.join(' - ')} >= 0`);
+    }
+  }
+
+  // Objective: minimize M (max load) - m (min load) + weekend/friday/RD balance
+  const objTerms: string[] = ['100 M', '-80 m', '50 Mw', '40 Mf', '30 Mrd'];
 
   // Dept-only priority: slight bonus for dept-only doctors in dept slot (lower cost)
   // and slight penalty for universal doctors in dept slot (encourage them to take R)
@@ -410,7 +432,10 @@ async function generateScheduleILP(
     '',
     'Bounds',
     `  0 <= M <= ${T * SLOTS}`,
+    `  0 <= m <= ${T * SLOTS}`,
     `  0 <= Mw <= ${T * SLOTS}`,
+    `  0 <= Mf <= ${T * SLOTS}`,
+    `  0 <= Mrd <= ${T * SLOTS}`,
     '',
     'Binary',
     `  ${activeVars.join(' ')}`,
@@ -628,12 +653,12 @@ function assignClinicDoctors(
   const clinicCounts: Record<string, number> = {};
   for (const doc of doctors) clinicCounts[doc.id] = 0;
 
-  // Gydytojai, kurie nėra klinikoje (konsultantai su ≤3 budėjimais/mėn.):
-  // riboti R-only gydytojai nedalyvauja atskiroje klinikos rotacijoje.
-  // Jie gali patekti į col1 tik kai jie TAIP PAT yra col2 tą dieną (natūraliai).
-  const isLimitedConsultant = (doc: Doctor): boolean =>
-    doc.canRepublic && !doc.canDepartment &&
-    doc.maxRepublicPerMonth !== null && doc.maxRepublicPerMonth <= 3;
+  // Gydytojai, kurie nedirba klinikoje (Skubiosios medicinos klinika 8-16):
+  // Visi R-only gydytojai (canRepublic && !canDepartment) nedalyvauja.
+  // Šaltinis: mama — "nedirba šie gydytojai už šį postą:
+  //   TamašauskasA, Deltuva, Vaitkevičius, Vilcinis, Urbonas, Matukevičius"
+  const isClinicExcluded = (doc: Doctor): boolean =>
+    doc.canRepublic && !doc.canDepartment;
 
   // Kiekvienai dienai sekame, kas baigė budėjimą tą rytą (= col2+col3 iš dienos X-1).
   // Gydytojas, ką tik baigęs 24h budėjimą, negali iš karto eiti į kliniką 8-16.
@@ -661,7 +686,7 @@ function assignClinicDoctors(
       // Tos dienos budintys gydytojai (col2/col3) negali būti klinikoje tą pačią dieną
       if (doc.id === entry.republicDoctor || doc.id === entry.departmentDoctor) return false;
       // Riboti konsultantai (R-only, max≤3) nedalyvauja klinikos rotacijoje
-      if (isLimitedConsultant(doc)) return false;
+      if (isClinicExcluded(doc)) return false;
       // Ką tik baigė budėjimą — negali iš karto į kliniką
       if (justFinished.has(doc.id)) return false;
       // Nedarbingas
@@ -692,6 +717,62 @@ function assignClinicDoctors(
   });
 }
 
+// ===== Resident Doctor Assignment (post-processing) =====
+// Rezidentai budi darbo dienomis 16-8 (16 val.), savaitgaliais/šventėmis 8-8 (24 val.)
+// Kiekvienai dienai priskiriamas vienas rezidentas, tolygiai paskirstant.
+
+function assignResidentDoctors(
+  schedule: ScheduleEntry[],
+  doctors: Doctor[],
+): ScheduleEntry[] {
+  const residents = doctors.filter(d => d.role === 'resident');
+  if (residents.length === 0) return schedule;
+
+  const resCounts: Record<string, number> = {};
+  const resWeekendCounts: Record<string, number> = {};
+  const resAssignedDays: Record<string, number[]> = {};
+
+  for (const r of residents) {
+    resCounts[r.id] = 0;
+    resWeekendCounts[r.id] = 0;
+    resAssignedDays[r.id] = [];
+  }
+
+  return schedule.map(entry => {
+    const eligible = residents.filter(r => {
+      // Negalimos dienos
+      if (r.unavailableDates.includes(entry.date)) return false;
+      // Min 2 poilsio dienos tarp budėjimų
+      const lastDays = resAssignedDays[r.id];
+      for (let gap = 1; gap < 2; gap++) {
+        if (lastDays.includes(entry.day - gap)) return false;
+      }
+      return true;
+    });
+
+    if (eligible.length === 0) return { ...entry, residentDoctor: null };
+
+    const isWE = entry.isWeekend || entry.isHoliday;
+    const isFri = entry.weekday === 4;
+
+    eligible.sort((a, b) => {
+      // Pirmiausia: tolygus bendras kiekis
+      if (resCounts[a.id] !== resCounts[b.id]) return resCounts[a.id] - resCounts[b.id];
+      // Savaitgaliais: tolygiai savaitgalius
+      if (isWE && resWeekendCounts[a.id] !== resWeekendCounts[b.id])
+        return resWeekendCounts[a.id] - resWeekendCounts[b.id];
+      return 0;
+    });
+
+    const chosen = eligible[0];
+    resCounts[chosen.id]++;
+    resAssignedDays[chosen.id].push(entry.day);
+    if (isWE || isFri) resWeekendCounts[chosen.id]++;
+
+    return { ...entry, residentDoctor: chosen.id };
+  });
+}
+
 // ===== Public API =====
 
 /**
@@ -705,9 +786,9 @@ export function generateSchedule(
   clinicHistory?: Record<string, number>,
 ): ScheduleEntry[] {
   // Synchronous wrapper — greedy only (ILP requires async).
-  // The async version is preferred — use generateScheduleAsync when possible.
   const raw = generateScheduleGreedy(doctors, config, rules || []);
-  return assignClinicDoctors(raw, doctors, clinicHistory || {});
+  const withClinic = assignClinicDoctors(raw, doctors, clinicHistory || {});
+  return assignResidentDoctors(withClinic, doctors);
 }
 
 /**
@@ -727,5 +808,6 @@ export async function generateScheduleAsync(
   const ilpResult = await generateScheduleILP(doctors, config, activeRules);
   const raw = ilpResult ?? generateScheduleGreedy(doctors, config, activeRules);
 
-  return assignClinicDoctors(raw, doctors, clinicHistory || {});
+  const withClinic = assignClinicDoctors(raw, doctors, clinicHistory || {});
+  return assignResidentDoctors(withClinic, doctors);
 }
